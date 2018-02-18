@@ -1,3 +1,13 @@
+% control_acbar: control software for ACBAR electrodynamic balance
+%
+% originally developed in Huisman Lab, Union College
+% adapted in Keutsch Lab, Harvard University
+%
+% dependencies:
+%   DS345Device.m : Matlab class for serial communication with function
+%                   generator
+%   injector.ino : Arduino script for droplet injection pulse generation
+
 function varargout = control_acbar(varargin)
 %%
 % creates acbar_main window
