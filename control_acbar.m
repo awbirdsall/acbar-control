@@ -3059,7 +3059,7 @@ build_hygrometer_window;
                 update_andor_output(source,eventdata,['Got frame number ' num2str(i)])
                 setappdata(main,'AndorImage',temp.AndorImage)
             end
-            [ret,status]= = ndorGetStatus;
+            [ret,status] = AndorGetStatus();
             if(status==atmcd.DRV_IDLE)
                 %if the device is idle, close the shutter
                 [ret] = SetShutter(1, 2, 1, 1); % close Shutter
