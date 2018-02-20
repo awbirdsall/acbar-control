@@ -7,6 +7,12 @@
 %   DS345Device.m : Matlab class for serial communication with function
 %                   generator
 %   injector.ino : Arduino script for droplet injection pulse generation
+%
+% commands to shut down program before restarting:
+% >> close all
+% >> delete(instrfind)
+% >> delete(timerfind)
+% >> imaqreset
 
 function control_acbar()
 %% create acbar_main window
@@ -21,14 +27,11 @@ delete(timerfindall);
 
 %% build buttons and displays
 save_checkbox = uicontrol('parent',main,'style','checkbox',...
-    'string','Save file',...
+    'string','Save data to file',...
     'value',0,'position',[10 10 140 20]);
 
-slowupdatetext = uicontrol(main,'style','text','string','Saves when checked',...
-    'position',[100 10 100 15]);
-
 save_filename = uicontrol('parent',main,'style','edit',...
-    'string','Enter Particle ID Here',...
+    'string','Enter filename here',...
     'position',[10 40 140 20],...
     'callback',@checkfile_exist);
 
@@ -45,23 +48,37 @@ errorcatchtimer_button = uicontrol(main,...
     'callback',@errortimer_startstop);
 
 MKSscramcomms = uicontrol(main,'style','pushbutton',...
-    'position',[175 75 110 20],'string','SCRAM COMMS',...
+    'position',[175 35 110 20],'string','SCRAM COMMS',...
     'callback',@SCRAM_COMMS);
 
-
 flush_button = uicontrol(main,'style','pushbutton',...
-    'position',[175 45 110 20],'string','Flush All Data',...
+    'position',[175 10 110 20],'string','Flush All Data',...
     'callback',@Flush_data);
 
-microscope_checkbox = uicontrol('parent',main,'style','checkbox',...
-    'string','Microscope subVI',...
-    'value',0,'position',[175 175 140 20],...
-    'callback',@microscope_checkbox_fcn,'visible','off');
-
-fringe_checkbox = uicontrol('parent',main,'style','checkbox',...
-    'string','Fringe subVI',...
-    'value',0,'position',[175 150 140 20],...
-    'callback',@fringe_checkbox_fcn,'visible','off');
+% build checkboxes to toggle window visibility
+uicontrol(main,'style','text','string','Window visibility',...
+    'position',[160 175 100 20]);
+% give checkboxes tags like 'microscope_checkbox', etc., and have them
+% toggle visibility of windows with tags like 'microscope_window'
+labels = {'microscope','fringe','arduino','mks','andor','hygrometer'};
+% startup visibility of each window, used to set both initial checkbox
+% state as well as the actual visibility in build_fringe_window, etc.
+window_visibility_default = [1,1,1,0,0,0];
+for i = 1:6
+    % generate tag for new checkbox
+    checkbox_tag = strcat(labels{i},'_checkbox');
+    % assume same tag prefix for window whose visibility is toggled
+    window_tag = strcat(labels{i},'_window');
+    % generate actual checkbox uicontrol object
+    uicontrol('parent',main,...
+        'style','checkbox',...
+        'string',labels{i},...
+        'value',window_visibility_default(i),...
+        'position',[175 160-20*(i-1) 140 20],...
+        'callback',{@toggle_window_visibility,window_tag},...
+        'tag',checkbox_tag,...
+        'visible','on');
+end
 
 fastupdatetext = uicontrol(main,'style','text','string','Fast update: 0.??? s',...
     'position',[10 100 150 15]);
@@ -76,6 +93,7 @@ fasttimer = timer('TimerFcn',@fasttimerFcn,'ExecutionMode','fixedRate',...
 errorcatchtimer = timer('TimerFcn',@errorcatchFcn,'ExecutionMode','fixedRate',...
     'Period',30);
 
+% initialize handles for other windows
 microscope_window_handle = [];
 fringe_window_handle = [];
 arduino_window_handle = [];
@@ -86,8 +104,6 @@ hygrometer_window_handle = [];
 %set Flags for camera
 setappdata(main,'camera1Flag',0)
 setappdata(main,'camera2Flag',0)
-setappdata(main,'microscope_subVI',0)
-setappdata(main,'fringe_subVI',0)
 setappdata(main,'FrameNumber',0);
 setappdata(main,'UPSInumber',1); %default to sensor 1
 setappdata(main,'AndorFlag',0);
@@ -109,12 +125,12 @@ setappdata(main,'microscope_image',[]);
 setappdata(main,'hygrometer_data',[]);
 setappdata(main,'voltage_data_nofeedback',[]);
 
-build_microscope_window;
-build_fringe_window;
-build_arduino_window;
-build_MKS_window;
-build_Andor_window;
-build_hygrometer_window;
+build_microscope_window(window_visibility_default(1));
+build_fringe_window(window_visibility_default(2));
+build_arduino_window(window_visibility_default(3));
+build_MKS_window(window_visibility_default(4));
+build_Andor_window(window_visibility_default(5));
+build_hygrometer_window(window_visibility_default(6));
 
     function checkfile_exist(source,eventdata)
         % TODO add code to make sure filename just typed in does not already
@@ -126,15 +142,16 @@ build_hygrometer_window;
     end
 
 %% functions that build windows and initialize variables
-    function build_microscope_window(source,eventdata)
+    function build_microscope_window(visibility)
         microscope_window_handle = figure('visible','off',...
             'Name','microscope',...
             'Position',[500,500,900,300],...
             'MenuBar','none',...
-            'ToolBar','none');
-        
-        set(microscope_window_handle,'visible','on')
-        
+            'ToolBar','none',...
+            'tag', 'microscope_window');
+        if visibility==1
+            set(microscope_window_handle,'visible','on')
+        end
 
         
         %create a button that arms the camera
@@ -369,14 +386,17 @@ build_hygrometer_window;
         
     end
 
-    function build_fringe_window(source,eventdata)
+    function build_fringe_window(visibility)
         fringe_window_handle = figure('visible','off',...
             'Name','fringe',...
             'Position',[800,100,600,300],...
             'MenuBar','none',...
-            'ToolBar','none');
+            'ToolBar','none',...
+            'tag', 'fringe_window');
         
-        set(fringe_window_handle,'visible','on')
+        if visibility==1
+            set(fringe_window_handle,'visible','on')
+        end
         
         %create a button that arms the camera
         farm = uicontrol(fringe_window_handle,'style','togglebutton','String','Run Camera',...
@@ -494,13 +514,16 @@ build_hygrometer_window;
         setappdata(main,'fringe_source_data',temp.src_fringe)
     end
 
-    function build_arduino_window(source,eventdata)
+    function build_arduino_window(visibility)
         arduino_window_handle = figure('visible','off',...
             'Name','Arduino',...
             'MenuBar','none',...
-            'ToolBar','none');
+            'ToolBar','none',...
+            'tag', 'arduino_window');
         
-        set(arduino_window_handle,'visible','on')
+        if visibility==1
+            set(arduino_window_handle,'visible','on')
+        end
         
         inject_pushbutton = uicontrol(arduino_window_handle,'style','pushbutton',...
             'String','Inject','position',[250 10 75 20],...
@@ -558,14 +581,17 @@ build_hygrometer_window;
         linkaxes([ax20 ax21],'x')
     end
 
-    function build_MKS_window(source,eventdata)
+    function build_MKS_window(visibility)
         MKS_window_handle = figure('visible','off',...
             'Name','MKS',...
             'Position',[50,100,700,300],...
             'MenuBar','none',...
-            'ToolBar','none');
+            'ToolBar','none',...
+            'tag', 'mks_window');
         
-        set(MKS_window_handle,'visible','on')
+        if visibility==1
+            set(MKS_window_handle,'visible','on')
+        end
         
         %check which serial ports are available
         serialinfo = instrhwinfo('serial');
@@ -728,13 +754,16 @@ build_hygrometer_window;
         
     end
 
-    function build_Andor_window(source,eventdata)
+    function build_Andor_window(visibility)
         Andor_window_handle = figure('visible','off',...
             'Name','Andor',...
             'MenuBar','none',...
-            'ToolBar','none');
+            'ToolBar','none',...
+            'tag', 'andor_window');
         
-        set(Andor_window_handle,'visible','on')
+        if visibility==1
+            set(Andor_window_handle,'visible','on')
+        end
         
         andor_abort = uicontrol('parent',Andor_window_handle,'style','pushbutton',...
             'position',[300 225 100 20],'string','Abort Acquisition',...
@@ -832,17 +861,20 @@ build_hygrometer_window;
         
     end
 
-    function build_hygrometer_window(source,eventdata)
+    function build_hygrometer_window(visibility)
         
         hygrometer_window_handle = figure('visible','off',...
             'Name','Hygrometer',...
             'MenuBar','none',...
-            'ToolBar','none');
+            'ToolBar','none',...
+            'tag', 'hygrometer_window');
         
         hygrometer_display = uicontrol(hygrometer_window_handle,'style','text',...
             'position',[250 10 300 20],'string','Hygrometer reading: ?');
         
-        set(hygrometer_window_handle,'visible','on')
+        if visibility==1
+            set(hygrometer_window_handle,'visible','on')
+        end
         
         %check which serial ports are available
         serialinfo = instrhwinfo('serial');
@@ -1174,20 +1206,21 @@ build_hygrometer_window;
         end
     end
 
-    function microscope_checkbox_fcn(source,eventdata)
-        if(get(source,'value'))
-            setappdata(main,'microscope_subVI',1)
+    function toggle_window_visibility(source,eventdata,tag_name)
+        % search only direct children of graphics root (i.e., the figure windows)
+        selected_window_handle = findobj(groot,'-depth',1,'tag',tag_name);
+        % warn if findobj didn't find anything
+        if isempty(selected_window_handle)
+            warning(['did not find window with tag ',tag_name])
         else
-            setappdata(main,'microscope_subVI',0)
+            % `get` evaluates as true if checkbox is checked
+            if(get(source,'value'))
+                set(selected_window_handle,'visible','on')
+            else
+                set(selected_window_handle,'visible','off')
+            end
         end
-    end
 
-    function fringe_checkbox_fcn(source,eventdata)
-        if(get(source,'value'))
-            setappdata(main,'fringe_subVI',1)
-        else
-            setappdata(main,'fringe_subVI',0)
-        end
     end
 
     function SCRAM_COMMS(source,eventdata)
@@ -1233,13 +1266,14 @@ build_hygrometer_window;
             %reset filename
             set(save_filename,'string','Enter new file name');
             listofnames = fieldnames(temp);
-            namestokeep = {'microscope_video_handle';'microscope_source_data';...
-                'fringe_video_handle';'fringe_source_data';...
-                'IdealY';'RampFlag';'AndorCalPoly';'AndorFlag';...
-                'UPSInumber';'microscope_subVI';'fringe_subVI';...
-                'camera1Flag';'camera2Flag';'FrameNumber';'UPSInumber';'ShamrockGrating';...
-                'ShamrockXCal';'MKS946_comm';'LaudaRS232';'DS345_DC';'DS345_AC';...
-                'arduino_comm';'JulaboRS232';'Hygrometer_comms'};
+            namestokeep = {'microscope_video_handle';
+                'microscope_source_data';'fringe_video_handle';...
+                'fringe_source_data';'IdealY';'RampFlag';'AndorCalPoly';...
+                'AndorFlag';'UPSInumber';'camera1Flag';'camera2Flag';...
+                'FrameNumber';'UPSInumber';'ShamrockGrating';...
+                'ShamrockXCal';'MKS946_comm';'LaudaRS232';'DS345_DC';...
+                'DS345_AC';'arduino_comm';'JulaboRS232';...
+                'Hygrometer_comms'};
             for i = 1:length(listofnames)
                 if(~ismember(listofnames{i},namestokeep))
                     eval(['setappdata(main,''' listofnames{i} ''',[])'])
