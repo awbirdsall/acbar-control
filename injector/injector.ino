@@ -1,5 +1,5 @@
-// This is the code for the Arduino attached with the injector shield
-// The PCB design for the shield can be found at "arduino_v2.0.pcb"
+// injector.ino: code for Arduino with injector shield attached
+// Written for PCB shield with design "Arduino Shield v3.1"
 // This code has five functions: 
 //     1. Inject using pushbutton and serial command
 //     2. Shutter the servos using the pushbuttons and serial command
@@ -7,8 +7,9 @@
 //     4. Deteect if injector made proper contact
 //     5. Interrupt routine for the laser shutter
 
-// Author: Htoo Wai Htet and Andy Huisman
-// Version: 2.0 to conntect to Arduino board v3.1
+// Code originally written as InjectorShield_v2
+// Authors of InjectorShield_v2: Htoo Wai Htet and Andy Huisman, Union College
+// Adapated by Keutsch Lab, Harvard University (Adam Birdsall)
 
 #include <Servo.h>
 
@@ -50,15 +51,15 @@ void setup() {
   pinMode(servo2PWM, OUTPUT);
   pinMode(injectPushbutton, INPUT);
   pinMode(contactSensor, INPUT);
-  // attaches the pin to the servo object
+  // attach pins to the servo object
   shutter1.attach(servo1PWM);   
   shutter2.attach(servo2PWM);
-  // defaults the injector pin to HIGH
+  // default injector pin to HIGH
   digitalWrite(injectTrigger, HIGH);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  // runs repeatedly
   if (Serial.available()) {
     char input = Serial.read();
     // s = single injection
