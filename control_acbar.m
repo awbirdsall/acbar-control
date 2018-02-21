@@ -117,6 +117,7 @@ setappdata(main,'fringe_image',[]);
 setappdata(main,'microscope_image',[]);
 setappdata(main,'hygrometer_data',[]);
 setappdata(main,'voltage_data_nofeedback',[]);
+setappdata(main,'voltage_dc_trap',0); % default DC trap voltage 0 V
 
 % initialize *****_window_handle vars in control_acbar()'s scope.
 % the `build_*****_window` functions, as nested functions, then share the
@@ -249,18 +250,23 @@ build_hygrometer_window(window_visibility_default(6));
         %check which serial ports are available
         serialinfo = instrhwinfo('serial');
         
+        % no longer connect to SRS function generator for the DC signal.
+        % Keep invisible 'SRS1' uicontrol elements for now to avoid messing
+        % up number-based indexing of elements in microscope_window_handle
+        % elsewhere in the code.
         SRS1label = uicontrol(microscope_window_handle,'style','text',...
             'String','DC Fcn Generator',...
-            'position',[525 250 100 20]);
+            'position',[525 250 100 20],'visible','off');
         
         SRS1selectbox = uicontrol(microscope_window_handle,'style','popupmenu',...
             'String',serialinfo.AvailableSerialPorts,...
-            'position',[650 250 100 20]);
-        
-        SRS1openclose = uicontrol(microscope_window_handle,'style','togglebutton',...
+            'position',[650 250 100 20],'visible','off');
+
+        SRS1openclose=uicontrol(microscope_window_handle,'style','togglebutton',...
             'String','Port Closed','Value',0,...
             'position',[775 250 100 20],...
-            'callback',@SRScommsDC,'tag','DC');
+            'tag','DC','visible','off');
+        % end of unused, invisible SRS1 elements
         
         SRS2label = uicontrol(microscope_window_handle,'style','text',...
             'String','AC Fcn Generator',...
@@ -270,7 +276,7 @@ build_hygrometer_window(window_visibility_default(6));
             'String',serialinfo.AvailableSerialPorts,...
             'position',[650 220 100 20]);
         
-        SRS1openclose = uicontrol(microscope_window_handle,'style','togglebutton',...
+        SRS2openclose = uicontrol(microscope_window_handle,'style','togglebutton',...
             'String','Port Closed','Value',0,...
             'position',[775 220 100 20],...
             'callback',@SRScommsAC,'tag','AC'); % TODO NEED TO FIX THIS CALLBACK?
@@ -282,7 +288,7 @@ build_hygrometer_window(window_visibility_default(6));
         
         DCOFFS = uicontrol(microscope_window_handle,'style','text',...
             'string','??? V ','position',[550 180 100 20]);
-        
+
         DCOFFS_plus10 = uicontrol(microscope_window_handle,'style','pushbutton',...
             'position',[550 160 80 20],'string','+10',...
             'callback',@newSRS,'tag','DC OFFS +10',...
@@ -1766,8 +1772,10 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function arduinocomms(source,eventdata)
+        % open or close connection to arduino
         [localhandles] = get_figure_handles(arduino_window_handle);
-        if(get(source,'value'))
+        temp = getappdata(main);
+        if(get(source,'value')) % initiate connection
             %open the port and lock the selector
             %get identity of port
             portstrings = get(localhandles(3),'string');
@@ -1786,14 +1794,45 @@ build_hygrometer_window(window_visibility_default(6));
             end
             set(obj2,'Timeout',1); %do a 1 second timeout
             
-            %open the serial object
+            %open the serial object and give time for Arduino to reset
             fopen(obj2);
-            pause(0.25)
+            % if pause isn't long enough, fscanf call below won't receive
+            % anything
+            pause(2)
+            % update and activate software controls
             set(localhandles(3),'enable','off');
             set(localhandles(2),'string','Port Open');
             set(localhandles(5),'enable','on');
             set(localhandles(6),'enable','on');
             setappdata(main,'arduino_comm',obj2);
+            
+            % turn things on for DC control (Union used 2nd SRS DS345)
+            microhandles = get_figure_handles(microscope_window_handle);
+            % ask arduino what setpoint was
+            flushinput(obj2) % clear any residual input from Arduino
+            fprintf(obj2,'d');
+            prev_dc_frac_str = fscanf(obj2,'%s\r\n');
+            prev_dc_frac = str2num(prev_dc_frac_str);
+            if isempty(prev_dc_frac)
+                ME = MException('arduinocomms:noDacSetpoint', ...
+                    ['Problem opening Arduino connection. ', ...
+                    'Did not receive DAC setpoint from Arduino. ', ...
+                    '(Insufficient wait time for Arduino setup?)']);
+                throw(ME);
+            end
+            % scale setpoint to 300 V scale
+            prev_dc = prev_dc_frac*300/4095;
+            temp.voltage_dc_trap = prev_dc;
+            setappdata(main,'voltage_dc_trap',temp.voltage_dc_trap);
+            % Update displayed voltage setpoint
+            new_dc_str = [num2str(prev_dc,'%+04.1f') ' V'];
+            set(microhandles(end-20),'string',new_dc_str);
+            %turn on all the buttons
+            for i = 21:26
+                set(microhandles(end-i),'enable','on')
+            end
+            
+            % read UPSI data and update display
             temp = getappdata(main);
             if(~isfield(temp,'UPSIdata'))
                 pause(1)
@@ -1806,9 +1845,7 @@ build_hygrometer_window(window_visibility_default(6));
                 temp.UPSIdata(1,:) = [now H1 T1 H2 T2];
                 setappdata(main,'UPSIdata',temp.UPSIdata)
             end
-        else
-            %close the port and unlock the selector
-            %check app data
+        else % close connection
             temp = getappdata(main);
             if(isfield(temp,'arduino_comm'))
                 fclose(temp.arduino_comm);
@@ -1818,6 +1855,13 @@ build_hygrometer_window(window_visibility_default(6));
             set(localhandles(2),'string','Port Closed');
             set(localhandles(5),'enable','off');
             set(localhandles(6),'enable','off');
+            
+            % turn things off for DC control
+            microhandles = get_figure_handles(microscope_window_handle);
+            % disable DC control buttons
+            for i = 21:26
+                set(microhandles(end-i),'enable','off')
+            end
         end
         
     end
@@ -1875,41 +1919,48 @@ build_hygrometer_window(window_visibility_default(6));
         set(localhandles(4),'string',[datestr(now) ' Burst'])
         
     end
-%% functions that actually do stuff for the SRS function generator
-    function SRScommsDC(source,eventdata)
-        if(get(source,'value'))
-            stop(fasttimer)
-            %get identity of port
-            localhandles = get_figure_handles(microscope_window_handle);
-            portstrings = get(localhandles(end-14),'string');
-            portID = portstrings{get(localhandles(end-14),'value')};
-            DS345_DC = DS345Device(portID);
-            setappdata(main,'DS345_DC',DS345_DC);
-            set(localhandles(end-14),'enable','off');
-            set(source,'string','Port Open');
-            stat = DS345_DC.offset;
-            stat = num2str(str2num(stat),'%+07.4f');
-            set(localhandles(end-20),'string',[stat ' V '])
-            %turn on all the buttons
-            for i = 21:26
-                set(localhandles(end-i),'enable','on')
-            end
-            start(fasttimer)
-        else
-            %close the port
-            temp = getappdata(main);
-            temp.DS345_DC.delete;
-            %clean up application data
-            rmappdata(main,'DS345_DC');
-            localhandles = get_figure_handles(microscope_window_handle);
-            set(localhandles(end-14),'enable','on');
-            set(source,'string','Port Closed');
-            for i = 21:26
-                set(localhandles(end-i),'enable','off')
-            end
-        end
+
+    function set_dc_text(source,eventdata)
+        dc_trap = str2num(get(source,'string'));
+        set_dc(dc_trap);
+        % update string in window that preserves state
+        stat = num2str(dc_trap,'%+07.4f');
+        microhandles = get_figure_handles(microscope_window_handle);
+        set(microhandles(end-20),'string',[stat ' V '])
     end
 
+    function set_dc(dc_trap)
+        % send DC setpoint to Arduino with MCP4725 DAC installed
+        % assumes 12-bit DAC with 0 to +5 V full range output, which is
+        % then amplified to 0 to +300 V scale
+        % input:
+        % dc_trap : float
+        % Desired voltage across DC endcaps in trap, 0 to +300 V range.
+        temp = getappdata(main);
+        fullrange = 300; % volts
+        % check voltage is in range
+        if dc_trap>=0 && dc_trap<=fullrange
+            allbits = round(dc_trap/fullrange * 4095);
+            % first byte is 0b1xxx#### where 1 is flag for Arduino that
+            % this is the first byte of a DC voltage setpoint, xxx is
+            % discarded and #### are the highest 4 bits of the 12-bit
+            % setpoint.
+            setpointflag = hex2dec('80');
+            highbits = bitand(allbits,bin2dec('111100000000'));
+            firstbyte = setpointflag + bitshift(highbits,-8);
+            secondbyte = bitand(allbits,bin2dec('000011111111'));
+            % send bytes to arduino. It's important they're sent as single
+            % bytes, without any newline character!
+            fwrite(temp.arduino_comm,firstbyte);
+            fwrite(temp.arduino_comm,secondbyte);
+        else
+            ME = MException('set_dc:voltageOutOfRange', ...
+                'voltage setpoint out of range');
+            throw(ME);
+        end
+    end
+        
+%% functions that actually do stuff for the SRS function generator
     function SRScommsAC(source,eventdata)
         if(get(source,'value'))
             stop(fasttimer)
@@ -1952,11 +2003,6 @@ build_hygrometer_window(window_visibility_default(6));
         end
     end
 
-    function SRSDC_mode(source,eventdata)
-        temp = getappdata(main);
-        temp.DS345_DC.set_func(lower(get(eventdata.NewValue,'String')))
-    end
-
     function newSRS(source,eventdata,label)
         temp = getappdata(main);
         localhandles = get_figure_handles(microscope_window_handle);
@@ -1968,13 +2014,19 @@ build_hygrometer_window(window_visibility_default(6));
         %AC FREQ localhandles(end-28)
         %AC AMP localhandles(end-36)
         if(strcmp(SRSvalue,'OFFS'))
-            SRSnumeric = str2num(localhandles(end-20).String(1:end-3));
-            SRSunit = localhandles(end-20).String(end-2:end);
-            SRSincrement = str2num(source.Tag(9:end));
-            SRSincrement = SRSincrement./1000;
-            newsetpoint = num2str(SRSnumeric+SRSincrement,'%+07.4f');
-            localhandles(end-20).String(1:end-3) = newsetpoint;
-            eval(['temp.DS345_' SRSwhichone '.set_' strtrim(lower(SRSvalue)) '(''' newsetpoint ''')'])
+            % Set DC voltage with the Arduino using set_dc().
+            % The DC setpoint state is stored in 'voltage_dc_trap'
+            % within `main`. The display string is just for display.
+            old_dc = temp.voltage_dc_trap;
+            dc_increment = str2num(source.Tag(9:end));
+            new_dc = old_dc+dc_increment;
+            % send command to update setpoint
+            set_dc(new_dc)
+            % display new DC setpoint
+            new_dc_str = [num2str(new_dc,'%+04.1f') ' V'];
+            localhandles(end-20).String = new_dc_str;
+            temp.voltage_dc_trap = new_dc;
+            setappdata(main,'voltage_dc_trap',temp.voltage_dc_trap);
         elseif(strcmp(SRSvalue,'AMP '))
             SRSnumeric = str2num(localhandles(end-36).String(1:end-3));
             SRSunit = localhandles(end-36).String(end-2:end);
@@ -1990,11 +2042,6 @@ build_hygrometer_window(window_visibility_default(6));
             localhandles(end-28).String(1:end-3) = num2str(SRSnumeric+SRSincrement,'%07.3f');
             eval(['temp.DS345_' SRSwhichone '.set_' strtrim(lower(SRSvalue)) '(''' newsetpoint ''')'])
         end
-        
-        
-        
-        
-        
     end
 
     function SRSoffs(setY)
