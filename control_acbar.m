@@ -93,13 +93,6 @@ fasttimer = timer('TimerFcn',@fasttimerFcn,'ExecutionMode','fixedRate',...
 errorcatchtimer = timer('TimerFcn',@errorcatchFcn,'ExecutionMode','fixedRate',...
     'Period',30);
 
-% initialize handles for other windows
-microscope_window_handle = [];
-fringe_window_handle = [];
-arduino_window_handle = [];
-MKS_window_handle = [];
-Andor_window_handle = [];
-hygrometer_window_handle = [];
 
 %set Flags for camera
 setappdata(main,'camera1Flag',0)
@@ -124,6 +117,17 @@ setappdata(main,'fringe_image',[]);
 setappdata(main,'microscope_image',[]);
 setappdata(main,'hygrometer_data',[]);
 setappdata(main,'voltage_data_nofeedback',[]);
+
+% initialize *****_window_handle vars in control_acbar()'s scope.
+% the `build_*****_window` functions, as nested functions, then share the
+% same *****_window_handle variables! See:
+% https://www.mathworks.com/help/matlab/matlab_prog/nested-functions.html
+microscope_window_handle = [];
+fringe_window_handle = [];
+arduino_window_handle = [];
+MKS_window_handle = [];
+Andor_window_handle = [];
+hygrometer_window_handle = [];
 
 build_microscope_window(window_visibility_default(1));
 build_fringe_window(window_visibility_default(2));
@@ -239,7 +243,7 @@ build_hygrometer_window(window_visibility_default(6));
             'position',[10 130 100 20],...
             'callback',{@clearaplot,ax1});
         
-        initialize_microscope_variables;
+        initialize_microscope_variables();
         
         %build SRS control
         %check which serial ports are available
@@ -373,7 +377,7 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
-    function initialize_microscope_variables(source,eventdata)
+    function initialize_microscope_variables()
         %create shared data for microscope
         temp.microscope_video_handle = videoinput('pointgrey',1,'Mono8_1280x960');
         temp.microscope_video_handle.FramesPerTrigger = 1;
@@ -477,11 +481,11 @@ build_hygrometer_window(window_visibility_default(6));
             'value',0,'position',[10 150 140 20],...
             'callback',@fringe_auto_gain);
         
-        initialize_fringe_variables;
+        initialize_fringe_variables();
     end
 
     function fringe_auto_gain(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,fringe_window_handle);
+        localhandles = get_figure_handles(fringe_window_handle);
         temp = getappdata(main);
         if(source.Value)
             localhandles(5).Enable = 'off';
@@ -502,7 +506,7 @@ build_hygrometer_window(window_visibility_default(6));
         end
     end
 
-    function initialize_fringe_variables(source,eventdata)
+    function initialize_fringe_variables()
         %create shared data for fringe camera
         temp.fringe_video_handle = videoinput('pointgrey',2,'Mono8_1280x960');
         temp.fringe_video_handle.FramesPerTrigger = 1;
@@ -972,30 +976,30 @@ build_hygrometer_window(window_visibility_default(6));
                 update_MKS_values(source,eventdata,savelogic);
             end
             if(isfield(temp,'LaudaRS232'))
-                update_Lauda(source,eventdata,savelogic);
+                update_Lauda(savelogic);
             end
             if(isfield(temp,'JulaboRS232'))
-                update_Julabo(source,eventdata,savelogic);
+                update_Julabo(savelogic);
             end
             if(isfield(temp,'arduino_comm')&&savelogic)
                 update_arduino(source,eventdata,savelogic);
             end
             if(isfield(temp,'Hygrometer_comms')&&datalogic)
-                update_hygrometer_data(source,eventdata,datalogic)
+                update_hygrometer_data()
                 %if it has been hot for at least 10 minutes, send it back
                 %to regular mode
                 if(temp.hygrometer_data(find(temp.hygrometer_data(:,1)>(now-15/60/24),1,'first'),2)>90)
-                   force_hygrometer_normal(source,eventdata) 
+                   force_hygrometer_normal() 
                 end
             end
             if(temp.AndorFlag)
-                update_Andor_values(source,eventdata);
+                update_Andor_values();
                 get_andor_data(source,eventdata);
             end
             if(feedbackOK)
-                plothandle = get_figure_handles(source,eventdata,microscope_window_handle);
+                plothandle = get_figure_handles(microscope_window_handle);
                 voltage_plothandle = plothandle(end-7).Children(2).Children(1);
-                microscopehandles = get_figure_handles(source,eventdata,microscope_window_handle);
+                microscopehandles = get_figure_handles(microscope_window_handle);
                 temp = getappdata(main);
                 if(~isempty(str2num(microscopehandles(end-20).String(1:end-3)))&microscopehandles(end-11).Value)
                     temp.VoltageData(end+1,:) = [now str2num(microscopehandles(end-20).String(1:end-3))];
@@ -1024,20 +1028,20 @@ build_hygrometer_window(window_visibility_default(6));
 
             end
             
-            andor_localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
-            fringe_localhandles = get_figure_handles(source,eventdata,fringe_window_handle);
+            andor_localhandles = get_figure_handles(Andor_window_handle);
+            fringe_localhandles = get_figure_handles(fringe_window_handle);
             set(fringe_localhandles(3).Children(3).Children(1),'ydir','normal');
-            update_andor_plot_1D(source,eventdata,fringe_localhandles(3).Children(3).Children(1))
+            update_andor_plot_1D(fringe_localhandles(3).Children(3).Children(1))
             if(temp.AndorFlag&&andor_localhandles(11).Value==1)
                 %update Andor plot
-                update_andor_plot_1D(source,eventdata,andor_localhandles(end));
+                update_andor_plot_1D(andor_localhandles(end));
             elseif(temp.AndorFlag&&andor_localhandles(11).Value==2)
-                update_andor_plot_2D(source,eventdata);
+                update_andor_plot_2D();
             end
             
             if(temp.RampFlag)
                 dt = (now-temp.RampTime_init)*24;
-                localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+                localhandles = get_figure_handles(MKS_window_handle);
                 if(dt>temp.Ramp_data(end,1))
                     %the ramp is over
                     localhandles(5).Value = 0;
@@ -1073,19 +1077,19 @@ build_hygrometer_window(window_visibility_default(6));
                     end
                     
                     Lauda_send_T(source,eventdata,T);
-                    update_Lauda(source,eventdata,savelogic);
+                    update_Lauda(savelogic);
                     Julabo_send_T(source,eventdata,JulaboT);
-                    update_Julabo(source,eventdata,savelogic);
+                    update_Julabo(savelogic);
                 end
             end
             
             %update fringe data tab
-            flocalhandles = get_figure_handles(source,eventdata,fringe_window_handle);
+            flocalhandles = get_figure_handles(fringe_window_handle);
             if(size(temp.fringe_compressed,1)>1&...
                     strcmp(flocalhandles(3).SelectedTab.Title,...
                     'Fringe Data'))
                 
-                peaksep = ACBAR_realtime_fringe_analysis(source,eventdata,temp);
+                peaksep = ACBAR_realtime_fringe_analysis(temp);
                 
                 cla(flocalhandles(3).Children(2).Children(1));
                 
@@ -1112,7 +1116,7 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
-    function [peaksep] = ACBAR_realtime_fringe_analysis(source,eventdata,temp)
+    function [peaksep] = ACBAR_realtime_fringe_analysis(temp)
         %try putting plots in time order like the LED spectra are
         X = temp.fringe_timestamp;
         nday = mean(diff(X)); %use the average spacing
@@ -1228,18 +1232,18 @@ build_hygrometer_window(window_visibility_default(6));
         delete(instrfindall)
         %repoll and refresh list of COMs
         serialinfo = instrhwinfo('serial');
-        localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+        localhandles = get_figure_handles(microscope_window_handle);
         set(localhandles(22),'String',serialinfo.AvailableSerialPorts);
         set(localhandles(21),'value',0,'string','Port Closed')
         set(localhandles(25),'String',serialinfo.AvailableSerialPorts);
         set(localhandles(24),'value',0,'string','Port Closed')
         if(ishandle(arduino_window_handle))
-            localhandles = get_figure_handles(source,eventdata,arduino_window_handle);
+            localhandles = get_figure_handles(arduino_window_handle);
             set(localhandles(3),'String',serialinfo.AvailableSerialPorts);
             set(localhandles(2),'value',0,'string','Port Closed')
         end
         if(ishandle(MKS_window_handle))
-            localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+            localhandles = get_figure_handles(MKS_window_handle);
             set(localhandles(20),'String',serialinfo.AvailableSerialPorts);
             set(localhandles(19),'value',0,'string','Port Closed')
             set(localhandles(18),'String',serialinfo.AvailableSerialPorts);
@@ -1288,15 +1292,15 @@ build_hygrometer_window(window_visibility_default(6));
 
 
 %% functions that actually do stuff for all subprograms
-    function localhandles = get_figure_handles(source,eventdata,handlein)
+    function localhandles = get_figure_handles(handlein)
         localhandles = get(handlein,'children');
     end
 
-    function wait_a_second(source,eventdata,handlein)
+    function wait_a_second(handlein)
         set(handlein ,'pointer','watch')
     end
 
-    function good_to_go(source,eventdata,handlein)
+    function good_to_go(handlein)
         set(handlein,'pointer','arrow')
     end
 
@@ -1316,8 +1320,8 @@ build_hygrometer_window(window_visibility_default(6));
             trigger(temp.microscope_video_handle);
             IM1 = getdata(temp.microscope_video_handle,1,'uint8');    %get image from camera
             IM1_small = imresize(IM1,[480 640]);
-            [~,ycentroid,feedbackOK] = microscope_blob_annotation(source,eventdata,IM1_small,updatelogic);
-            [localhandles] = get_figure_handles(source,eventdata,microscope_window_handle);
+            [~,ycentroid,feedbackOK] = microscope_blob_annotation(IM1_small,updatelogic);
+            [localhandles] = get_figure_handles(microscope_window_handle);
             if(get(localhandles(2+6+21),'value')&&feedbackOK&&datalogic)
                 if(isfield(temp,'PID_oldvalue'))
                     microscope_feedback_hold(source,eventdata,ycentroid);
@@ -1330,7 +1334,7 @@ build_hygrometer_window(window_visibility_default(6));
             trigger(temp.fringe_video_handle);
             IM2 = getdata(temp.fringe_video_handle,1,'uint8');
             IM2_small = imresize(IM2,[480 640]);
-            [localhandles] = get_figure_handles(source,eventdata,fringe_window_handle);
+            [localhandles] = get_figure_handles(fringe_window_handle);
             cla(localhandles(3).Children(1).Children(1))
             imshow(IM2_small,'parent',localhandles(3).Children(1).Children(1))
             str = ['Time: ' datestr(now)];
@@ -1338,7 +1342,7 @@ build_hygrometer_window(window_visibility_default(6));
             ytextloc = 450;
             text(localhandles(3).Children(1).Children(1),double(xtextloc),double(ytextloc),str,'color','white')
             if(get(localhandles(2),'value'))
-                [fringe_compressed] = fringe_annotation(source,eventdata,IM2_small);
+                [fringe_compressed] = fringe_annotation(IM2_small);
                 fringe_image = IM2_small;
             end
         elseif(camera1running&&camera2running&&updatelogic)
@@ -1347,8 +1351,8 @@ build_hygrometer_window(window_visibility_default(6));
             IM1 = getdata(temp.microscope_video_handle,1,'uint8');    %get image from camera
             IM2 = getdata(temp.fringe_video_handle,1,'uint8');
             IM1_small = imresize(IM1,[480 640]);
-            [~,ycentroid,feedbackOK] = microscope_blob_annotation(source,eventdata,IM1_small,updatelogic);
-            [mlocalhandles] = get_figure_handles(source,eventdata,microscope_window_handle);
+            [~,ycentroid,feedbackOK] = microscope_blob_annotation(IM1_small,updatelogic);
+            [mlocalhandles] = get_figure_handles(microscope_window_handle);
             if(get(mlocalhandles(2+6+21),'value')&&feedbackOK&&datalogic==1)
                 if(isfield(temp,'PID_oldvalue'))
                     microscope_feedback_hold(source,eventdata,ycentroid);
@@ -1357,7 +1361,7 @@ build_hygrometer_window(window_visibility_default(6));
                 end
             end
             IM2_small = imresize(IM2,[480 640]);
-            [flocalhandles] = get_figure_handles(source,eventdata,fringe_window_handle);
+            [flocalhandles] = get_figure_handles(fringe_window_handle);
             cla(flocalhandles(3).Children(1).Children(1))
             imshow(IM2_small,'parent',flocalhandles(3).Children(1).Children(1))
             str = ['Time: ' datestr(now)];
@@ -1366,7 +1370,7 @@ build_hygrometer_window(window_visibility_default(6));
             text(flocalhandles(3).Children(1).Children(1),...
                 double(xtextloc),double(ytextloc),str,'color','white')
             if(get(flocalhandles(2),'value'))
-                [fringe_compressed] = fringe_annotation(source,eventdata,IM2_small);
+                [fringe_compressed] = fringe_annotation(IM2_small);
                 fringe_image = IM2_small;
             end
             microscope_image = uint8(IM1_small);
@@ -1402,7 +1406,7 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function microscope_auto_gain(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+        localhandles = get_figure_handles(microscope_window_handle);
         temp = getappdata(main);
         if(source.Value)
             localhandles(end-2).Enable = 'off';
@@ -1426,7 +1430,7 @@ build_hygrometer_window(window_visibility_default(6));
     function microscope_camera_arm(source,eventdata)
         %state of button: 1 = on, 0 = off
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(source,eventdata,microscope_window_handle);
+        [localhandles] = get_figure_handles(microscope_window_handle);
         if(get(source,'value'))
             %turn camera on
             setappdata(main,'camera1Flag',1)
@@ -1458,7 +1462,7 @@ build_hygrometer_window(window_visibility_default(6));
     function change_microscope_gain(source,eventdata)
         %get temporary data and pointers
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(source,eventdata,microscope_window_handle);
+        [localhandles] = get_figure_handles(microscope_window_handle);
         newgain = source.Value;
         %write value to camera
         temp.microscope_source_data.Gain = newgain;
@@ -1466,18 +1470,18 @@ build_hygrometer_window(window_visibility_default(6));
         set(localhandles(end-3),'string',[num2str(newgain,'%10.1f') ' dB'])
         %write source data back to application data
         setappdata(main,'microscope_source_data',temp.microscope_source_data);
-        wait_a_second(source,eventdata,microscope_window_handle);
+        wait_a_second(microscope_window_handle);
         %update image
         frame = getsnapshot(temp.microscope_video_handle);
         frame_small = imresize(frame,[480 640]);
-        good_to_go(source,eventdata,microscope_window_handle);
+        good_to_go(microscope_window_handle);
         imshow(frame_small,'parent',localhandles(end-7).Children(1).Children(1))
     end
 
     function change_microscope_shutter(source,eventdata)
         %get temporary data and pointers
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(source,eventdata,microscope_window_handle);
+        [localhandles] = get_figure_handles(microscope_window_handle);
         newshutter = source.Value;
         %write value to camera
         temp.microscope_source_data.Shutter = newshutter;
@@ -1485,11 +1489,11 @@ build_hygrometer_window(window_visibility_default(6));
         set(localhandles(end-5),'string',[num2str(newshutter,'%10.1f') ' ms'])
         %write source data back to application data
         setappdata(main,'microscope_source_data',temp.microscope_source_data);
-        wait_a_second(source,eventdata,microscope_window_handle);
+        wait_a_second(microscope_window_handle);
         %update image
         frame = getsnapshot(temp.microscope_video_handle);
         frame_small = imresize(frame,[480 640]);
-        good_to_go(source,eventdata,microscope_window_handle);
+        good_to_go(microscope_window_handle);
         imshow(frame_small,'parent',localhandles(end-7).Children(1).Children(1))
     end
 
@@ -1497,23 +1501,23 @@ build_hygrometer_window(window_visibility_default(6));
         stop(fasttimer)
         pause(0.25)
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(source,eventdata,microscope_window_handle);
+        [localhandles] = get_figure_handles(microscope_window_handle);
         trigger(temp.microscope_video_handle);
         IM1 = getdata(temp.microscope_video_handle);
         IM1_small = imresize(IM1,[480 640]);
-        [~,idealy] = microscope_blob_annotation(source,eventdata,IM1_small,0);
+        [~,idealy] = microscope_blob_annotation(IM1_small,0);
         set(localhandles(4+6+20+1),'string',num2str(idealy));
         setappdata(main,'IdealY',idealy);
         start(fasttimer)
     end
 
-    function [x_centroid,y_centroid,feedbackOK] = microscope_blob_annotation(source,eventdata,imdata,plotflag)
+    function [x_centroid,y_centroid,feedbackOK] = microscope_blob_annotation(imdata,plotflag)
         blobtic = tic;
         %attempt fitting
         feedbackOK = 1;
         stats = regionprops(im2bw(imdata,0.3));
         sortedstats = sort([stats.Area]);
-        [localhandles] = get_figure_handles(source,eventdata,microscope_window_handle);
+        [localhandles] = get_figure_handles(microscope_window_handle);
         if(length(sortedstats)==1)
             %if only one region
             box_ind = find([stats.Area]==sortedstats(end));
@@ -1526,7 +1530,7 @@ build_hygrometer_window(window_visibility_default(6));
                 %and stop the ramp, if feedback was active note it should be
                 %possible to run a ramp with no feedback but turning feedback
                 %on and having it turn itself off will stop the ramp
-                MKShandles = get_figure_handles(source,eventdata,MKS_window_handle);
+                MKShandles = get_figure_handles(MKS_window_handle);
                 set(MKShandles(9),'enable','on')
                 setappdata(main,'RampFlag',0)
                 set(MKShandles(5),'string','Ramp Trap')
@@ -1594,7 +1598,7 @@ build_hygrometer_window(window_visibility_default(6));
             setappdata(main,'PID_timestamp',currenttime)
             setappdata(main,'PID_Iterm',0);
             setappdata(main,'PID_DCclicktime',currenttime)
-            localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+            localhandles = get_figure_handles(microscope_window_handle);
             setappdata(main,'PID_DCvolt',str2num(localhandles(20).String(1:end-3)));
             setappdata(main,'PID_ACfreq',str2num(localhandles(12).String(1:end-3)));
         elseif(get(source,'value')==0&&isfield(temp,'DS345_DC'))
@@ -1622,7 +1626,7 @@ build_hygrometer_window(window_visibility_default(6));
             return
         end
         dt = etime(currenttime,temp.PID_timestamp);
-        localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+        localhandles = get_figure_handles(microscope_window_handle);
         
         SRSoffs_inp = str2num(localhandles(end-20).String(1:end-3));
         if(dt<20)
@@ -1639,7 +1643,7 @@ build_hygrometer_window(window_visibility_default(6));
         %SRS function generator
         
         localhandles(end-20).String(1:end-3) = num2str(newY,'%+07.4f');
-        SRSoffs(source,eventdata,newY)
+        SRSoffs(newY)
         
         %try to adapt AC voltage as DC changes
         freqfactor = abs(sqrt(1/(newY/temp.PID_DCvolt)));
@@ -1654,7 +1658,7 @@ build_hygrometer_window(window_visibility_default(6));
         end
         
         localhandles(12).String(1:end-3) = num2str(newAC,'%07.3f');
-        SRSfreq(source,eventdata,newAC)
+        SRSfreq(newAC)
         
         fbtime = toc(fbtic);
         setappdata(main,'PID_timestamp',currenttime);
@@ -1676,7 +1680,7 @@ build_hygrometer_window(window_visibility_default(6));
     function fringe_camera_arm(source,eventdata)
         %state of button: 1 = on, 0 = off
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(source,eventdata,fringe_window_handle);
+        [localhandles] = get_figure_handles(fringe_window_handle);
         if(get(source,'value'))
             %turn camera flag on
             setappdata(main,'camera2Flag',1)
@@ -1711,7 +1715,7 @@ build_hygrometer_window(window_visibility_default(6));
     function change_fringe_gain(source,eventdata)
         %get temporary data and pointers
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(source,eventdata,fringe_window_handle);
+        [localhandles] = get_figure_handles(fringe_window_handle);
         newgain = get(localhandles(8),'value');%get the new gain value
         %write value to camera
         temp.fringe_source_data.Gain = newgain;
@@ -1720,17 +1724,17 @@ build_hygrometer_window(window_visibility_default(6));
         %write source data back to application data
         setappdata(main,'fringe_source_data',temp.fringe_source_data);
         %update image
-        wait_a_second(source,eventdata,fringe_window_handle);
+        wait_a_second(fringe_window_handle);
         frame = getsnapshot(temp.fringe_video_handle);
         frame_small = imresize(frame,[480 640]);
-        good_to_go(source,eventdata,fringe_window_handle);
+        good_to_go(fringe_window_handle);
         imshow(frame_small,'parent',localhandles(3).Children(1).Children(1));
     end
 
     function change_fringe_shutter(source,eventdata)
         %get temporary data and pointers
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(source,eventdata,fringe_window_handle);
+        [localhandles] = get_figure_handles(fringe_window_handle);
         newshutter = get(localhandles(6),'value');%get the new gain value
         %write value to camera
         temp.fringe_source_data.Shutter = newshutter;
@@ -1739,18 +1743,18 @@ build_hygrometer_window(window_visibility_default(6));
         %write source data back to application data
         setappdata(main,'fringe_source_data',temp.fringe_source_data);
         %update image
-        wait_a_second(source,eventdata,fringe_window_handle);
+        wait_a_second(fringe_window_handle);
         frame = getsnapshot(temp.fringe_video_handle);
         frame_small = imresize(frame,[480 640]);
-        good_to_go(source,eventdata,fringe_window_handle);
+        good_to_go(fringe_window_handle);
         imshow(frame_small,'parent',localhandles(3).Children(1).Children(1));
     end
 
-    function [imdata_compressed] = fringe_annotation(source,eventdata,imdata)
+    function [imdata_compressed] = fringe_annotation(imdata)
         imdata_compressed = mean(imdata,2);
         %compress data
         imdata_compressed = uint8(imdata_compressed./max(imdata_compressed)*200);
-        [localhandles] = get_figure_handles(source,eventdata,fringe_window_handle);
+        [localhandles] = get_figure_handles(fringe_window_handle);
         plot(localhandles(3).Children(1).Children(1),640-uint16(imdata_compressed(1:end)),1:(480),'r','linewidth',2);
     end
 
@@ -1762,7 +1766,7 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function arduinocomms(source,eventdata)
-        [localhandles] = get_figure_handles(source,eventdata,arduino_window_handle);
+        [localhandles] = get_figure_handles(arduino_window_handle);
         if(get(source,'value'))
             %open the port and lock the selector
             %get identity of port
@@ -1818,9 +1822,9 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
-    function update_arduino_display(source,eventdata)
+    function update_arduino_display()
         %update display
-        [localhandles] = get_figure_handles(source,eventdata,arduino_window_handle);
+        [localhandles] = get_figure_handles(arduino_window_handle);
         temp = getappdata(main);
         if(~isfield(temp,'UPSIdata')||size(temp.UPSIdata,1)==1)
             %do not attempt to plot if there is only one data point
@@ -1851,18 +1855,18 @@ build_hygrometer_window(window_visibility_default(6));
         T2 = str2num(data2(spaces(3)+1:spaces(4)-1));
         temp.UPSIdata(end+1,:) = [now H1 T1 H2 T2];
         setappdata(main,'UPSIdata',temp.UPSIdata);
-        update_arduino_display(source,eventdata);
+        update_arduino_display();
     end
 
     function inject(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,arduino_window_handle);
+        localhandles = get_figure_handles(arduino_window_handle);
         temp = getappdata(main);
         data2 = query(temp.arduino_comm,'s');
         set(localhandles(4),'string',[datestr(now) ' ' data2])
     end
 
     function burst(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,arduino_window_handle);
+        localhandles = get_figure_handles(arduino_window_handle);
         temp = getappdata(main);
         data2 = query(temp.arduino_comm,'1');
         for i = 1:19
@@ -1876,7 +1880,7 @@ build_hygrometer_window(window_visibility_default(6));
         if(get(source,'value'))
             stop(fasttimer)
             %get identity of port
-            localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+            localhandles = get_figure_handles(microscope_window_handle);
             portstrings = get(localhandles(end-14),'string');
             portID = portstrings{get(localhandles(end-14),'value')};
             DS345_DC = DS345Device(portID);
@@ -1897,7 +1901,7 @@ build_hygrometer_window(window_visibility_default(6));
             temp.DS345_DC.delete;
             %clean up application data
             rmappdata(main,'DS345_DC');
-            localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+            localhandles = get_figure_handles(microscope_window_handle);
             set(localhandles(end-14),'enable','on');
             set(source,'string','Port Closed');
             for i = 21:26
@@ -1910,7 +1914,7 @@ build_hygrometer_window(window_visibility_default(6));
         if(get(source,'value'))
             stop(fasttimer)
             %get identity of port
-            localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+            localhandles = get_figure_handles(microscope_window_handle);
             portstrings = get(localhandles(end-17),'string');
             portID = portstrings{get(localhandles(end-17),'value')};
             DS345_AC = DS345Device(portID);
@@ -1936,7 +1940,7 @@ build_hygrometer_window(window_visibility_default(6));
             temp.DS345_AC.delete;
             %clean up application data
             rmappdata(main,'DS345_AC');
-            localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+            localhandles = get_figure_handles(microscope_window_handle);
             set(localhandles(end-17),'enable','on');
             set(source,'string','Port Closed');
             for i = 29:34
@@ -1955,7 +1959,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function newSRS(source,eventdata,label)
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,microscope_window_handle);
+        localhandles = get_figure_handles(microscope_window_handle);
         %a button was pushed
         %figure out what is being done
         SRSwhichone = source.Tag(1:2);
@@ -1993,22 +1997,21 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
-    function SRSoffs(source,eventdata,setY)
+    function SRSoffs(setY)
         temp = getappdata(main);
         temp.DS345_DC.set_offs(num2str(setY))
     end
 
-    function SRSfreq(source,eventdata,newAC)
+    function SRSfreq(newAC)
         temp = getappdata(main);
         temp.DS345_AC.set_freq(num2str(newAC,'%.3f'));
-        %set(SRSfreq_lab,'string',['Set: ' num2str(get(source,'value'),'%.2f') 'Hz'])
     end
 
 
 %% functions that actually do stuff for the MKS and Lauda board
 
     function Laudacomms(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         if(get(source,'value'))
             stop(fasttimer)
             %get identity of port
@@ -2037,7 +2040,7 @@ build_hygrometer_window(window_visibility_default(6));
             fopen(obj1);
             setappdata(main,'LaudaRS232',obj1)
             
-            update_Lauda(source,eventdata,0)
+            update_Lauda(0)
             
             
             
@@ -2056,8 +2059,8 @@ build_hygrometer_window(window_visibility_default(6));
         end
     end
 
-    function update_Lauda(source,eventdata,savelogic)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+    function update_Lauda(savelogic)
+        localhandles = get_figure_handles(MKS_window_handle);
         temp = getappdata(main);
         obj1 = temp.LaudaRS232;
         data8 = query(obj1, 'STATUS');
@@ -2139,7 +2142,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function LaudaPower(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         obj1 = temp.LaudaRS232;
         if(get(source,'value'))
             qd = query(obj1,'START');
@@ -2152,7 +2155,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function LaudaChiller(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         obj1 = temp.LaudaRS232;
         if(get(source,'value'))
             qd = query(obj1,'OUT_SP_02_02');
@@ -2165,7 +2168,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function LaudaControl(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         obj1 = temp.LaudaRS232;
         if(get(source,'value'))
             qd = query(obj1,'OUT_MODE_01_1');
@@ -2184,13 +2187,13 @@ build_hygrometer_window(window_visibility_default(6));
         end
         %TODO: add saftey feature to prevent user from typing in something dumb
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         obj1 = temp.LaudaRS232;
         qd = query(obj1,['OUT_SP_00_' num2str(setT,'%5.2f')]);
     end
 
     function Julabocomms(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         if(get(source,'value'))
             stop(fasttimer)
             %get identity of port
@@ -2229,7 +2232,7 @@ build_hygrometer_window(window_visibility_default(6));
             fopen(obj1);
             setappdata(main,'JulaboRS232',obj1)
             
-            update_Julabo(source,eventdata,0)
+            update_Julabo(0)
         else
             %close the port
             temp = getappdata(main);
@@ -2243,8 +2246,8 @@ build_hygrometer_window(window_visibility_default(6));
         end
     end
 
-    function update_Julabo(source,eventdata,savelogic)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+    function update_Julabo(savelogic)
+        localhandles = get_figure_handles(MKS_window_handle);
         temp = getappdata(main);
         obj1 = temp.JulaboRS232;
         data8 = query(obj1, 'status');
@@ -2287,7 +2290,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function JulaboPower(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         obj1 = temp.JulaboRS232;
         if(get(source,'value'))
             fprintf(obj1,'out_mode_05 1'); %start the pump
@@ -2306,7 +2309,7 @@ build_hygrometer_window(window_visibility_default(6));
         end
         %TODO: add safety feature to prevent user from typing in something dumb
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         obj1 = temp.JulaboRS232;
         fprintf(obj1,['out_sp_00 ' num2str(setT,'%5.2f')]);
     end
@@ -2316,7 +2319,7 @@ build_hygrometer_window(window_visibility_default(6));
         if(get(source,'value'))
             %open the port and lock the selector
             %get identity of port
-            localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+            localhandles = get_figure_handles(MKS_window_handle);
             portstrings = get(localhandles(20),'string');
             portID = portstrings{get(localhandles(20),'value')};
             
@@ -2353,7 +2356,7 @@ build_hygrometer_window(window_visibility_default(6));
                 fclose(temp.MKS946_comm);
                 rmappdata(main,'MKS946_comm');
             end
-            localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+            localhandles = get_figure_handles(MKS_window_handle);
             set(localhandles(20),'enable','on');
             set(localhandles(19),'string','Port Closed');
             set(localhandles(13),'enable','off');
@@ -2366,7 +2369,7 @@ build_hygrometer_window(window_visibility_default(6));
     function update_MKS_values(source,eventdata,savelogic)
         %query the state of ch3 and 4
         %hard code for now
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         stat = MKSsend(source,eventdata,'QMD3?');
         switch stat %switch on response only
             case 'OPEN',
@@ -2427,8 +2430,8 @@ build_hygrometer_window(window_visibility_default(6));
             else
                 Bath_T = 19;
             end
-            Bath_saturation = water_vapor_pressure(source,eventdata,Bath_T+273.15);
-            Trap_saturation = water_vapor_pressure(source,eventdata,localhandles(9).Data(1,2)+273.15);
+            Bath_saturation = water_vapor_pressure(Bath_T+273.15);
+            Trap_saturation = water_vapor_pressure(localhandles(9).Data(1,2)+273.15);
             RH = round(100*F_humid/(F_humid+F_dry)*Bath_saturation/Trap_saturation,1);
             if(~isempty(RH))
                 localhandles(9).Data(1,3) = RH;
@@ -2444,7 +2447,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function [response] = MKSsend(source,eventdata,varargin)
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         if(length(varargin)==1)
             arg1 = varargin{1};
         else
@@ -2504,7 +2507,7 @@ build_hygrometer_window(window_visibility_default(6));
         MKSsend(source,eventdata,['QSP' num2str(channel) '!' formatted_value]);
     end
 
-    function p_circ = water_vapor_pressure(source,eventdata,T)
+    function p_circ = water_vapor_pressure(T)
         
         %http://www.watervaporpressure.com/
         %input T in celsius!
@@ -2527,18 +2530,18 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function cleartable_fcn(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         localhandles(9).Data = [0 -999 -999 -999];
     end
 
     function edit_table(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         data = localhandles(9).Data;
         localhandles(9).Data = data;
     end
 
     function addrow_fcn(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         data = localhandles(9).Data;
         data(end+1,:) = data(end,:); %if data is an array.
         data(end,1) = data(end,1)+0.5; %make default 30 minutes per step
@@ -2546,7 +2549,7 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function temp_fig = sim_ramp_fcn(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         data = localhandles(9).Data;
         fc1 = 200;
         fc2 = 200;
@@ -2562,8 +2565,8 @@ build_hygrometer_window(window_visibility_default(6));
         data = newdata;
         flow_total = data(:,4);
         Bath_T = data(:,5);
-        p_source = water_vapor_pressure(source,eventdata,Bath_T+273.15); %in bar
-        p_trap_sat = water_vapor_pressure(source,eventdata,data(:,2)+273.15); %in bar
+        p_source = water_vapor_pressure(Bath_T+273.15); %in bar
+        p_trap_sat = water_vapor_pressure(data(:,2)+273.15); %in bar
         p_trap = p_trap_sat.*data(:,3)/100; %in bar
         maxRH = p_source./p_trap_sat;
         flows = [1-p_trap./p_source p_trap./p_source]; %unscaled flows
@@ -2613,7 +2616,7 @@ build_hygrometer_window(window_visibility_default(6));
 
 
     function drive_ramps_fcn(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        localhandles = get_figure_handles(MKS_window_handle);
         if(source.Value)
             stop(fasttimer)
             stop(errorcatchtimer)
@@ -2647,17 +2650,17 @@ build_hygrometer_window(window_visibility_default(6));
     function andor_initalize(source,eventdata)
         %initalize camera
         %check to see if the camera is already connected
-        wait_a_second(source,eventdata,Andor_window_handle)
+        wait_a_second(Andor_window_handle)
         [ret,status] = AndorGetStatus();
         if(status==atmcd.DRV_IDLE)
             %camera already connected, no need to reinitialize the connection
         else
             ret = AndorInitialize('');
         end
-        good_to_go(source,eventdata,Andor_window_handle)
+        good_to_go(Andor_window_handle)
         CheckError(ret);
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
-        update_andor_output(source,eventdata,'Connected to Andor')
+        localhandles = get_figure_handles(Andor_window_handle);
+        update_andor_output('Connected to Andor')
         %check and synchronize status of chiller
         [ret,Cstat] = IsCoolerOn;
         setappdata(main,'AndorFlag',1)
@@ -2682,29 +2685,29 @@ build_hygrometer_window(window_visibility_default(6));
             localhandles(7).Enable = 'off';
             [ret] = SetAcquisitionMode(1); % Set acquisition mode; 1 for single scan
             CheckWarning(ret);
-            update_andor_output(source,eventdata,'Set up Single Scan')
+            update_andor_output('Set up Single Scan')
             [ret] = SetExposureTime(str2num(localhandles(9).String)); % Set exposure time in second
             CheckWarning(ret);
-            update_andor_output(source,eventdata,['Exposure Time: ' localhandles(9).String ' s'])
+            update_andor_output(['Exposure Time: ' localhandles(9).String ' s'])
         elseif(localhandles(11).Value==2)
             %kinetic series mode
             localhandles(5).Enable = 'on';
             localhandles(7).Enable = 'on';
             [ret] = SetAcquisitionMode(3); % Set acquisition mode; 3 for Kinetic Series
             CheckWarning(ret);
-            update_andor_output(source,eventdata,'Set up Kinetic Series')
+            update_andor_output('Set up Kinetic Series')
             
             [ret] = SetNumberKinetics(str2num(localhandles(7).String));
             CheckWarning(ret);
-            update_andor_output(source,eventdata,['Length of Kinetic Series: ' localhandles(7).String])
+            update_andor_output(['Length of Kinetic Series: ' localhandles(7).String])
             
             [ret] = SetExposureTime(str2num(localhandles(9).String)); % Set exposure time in second
             CheckWarning(ret);
-            update_andor_output(source,eventdata,['Exposure Time: ' localhandles(9).String ' s'])
+            update_andor_output(['Exposure Time: ' localhandles(9).String ' s'])
             
             [ret] = SetKineticCycleTime(str2num(localhandles(5).String)); %set kinetic cycle time
             CheckWarning(ret);
-            update_andor_output(source,eventdata,['Cycle Time: ' localhandles(5).String ' s'])
+            update_andor_output(['Cycle Time: ' localhandles(5).String ' s'])
         end
         
         [ret] = SetReadMode(0); % Set read mode; 0 for FVP
@@ -2718,22 +2721,22 @@ build_hygrometer_window(window_visibility_default(6));
         CheckWarning(ret);
         
         %initalize Shamrock Spectrometer
-        wait_a_second(source,eventdata,Andor_window_handle);
+        wait_a_second(Andor_window_handle);
         [ret, nodevices] = ShamrockGetNumberDevices();
         if(ret==Shamrock.SHAMROCK_SUCCESS());
             %do nothing, already connected
         else
             [ret] = ShamrockInitialize('');
         end
-        good_to_go(source,eventdata,Andor_window_handle);
+        good_to_go(Andor_window_handle);
         [ret, nodevices] = ShamrockGetNumberDevices();
         %we are using device 0
         [ret,SN] = ShamrockGetSerialNumber(0);
         if(~strcmp(SN,'SR2116'))
-            update_andor_output(source,eventdata,'Failed to initalize spectrometer')
+            update_andor_output('Failed to initalize spectrometer')
             return
         else
-            update_andor_output(source,eventdata,'Connected to Shamrock')
+            update_andor_output('Connected to Shamrock')
             localhandles(1).Enable = 'on';
             localhandles(2).Enable = 'on';
             localhandles(12).Enable = 'on';
@@ -2754,8 +2757,8 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
-    function update_andor_output(source,eventdata,newstring)
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+    function update_andor_output(newstring)
+        localhandles = get_figure_handles(Andor_window_handle);
         %add the string
         localhandles(3).String{end+1} = newstring;
         %make sure box isn't over full
@@ -2765,50 +2768,50 @@ build_hygrometer_window(window_visibility_default(6));
     function change_andor_exposure_time(source,eventdata)
         temp = getappdata(main);
         if(~temp.AndorFlag)
-            update_andor_output(source,eventdata,'Parameter not set!')
+            update_andor_output('Parameter not set!')
             beep;
             return
         end
         [ret,status] = AndorGetStatus;
         if(status~=atmcd.DRV_IDLE)
             beep;warning('Parameter not set')
-            update_andor_output(source,eventdata,'Andor busy!')
+            update_andor_output('Andor busy!')
             return
         end
         strstat = all(isstrprop(get(source,'string'),'digit')|isstrprop(get(source,'string'),'punct'));
         if(strstat)
             [ret] = SetExposureTime(str2num(source.String)); % Set exposure time in second
             CheckWarning(ret);
-            update_andor_output(source,eventdata,['Integration Time: ' source.String ' s'])
+            update_andor_output(['Integration Time: ' source.String ' s'])
         else
             source.String = '15';
             beep
-            update_andor_output(source,eventdata,'Numbers only in this field!')
+            update_andor_output('Numbers only in this field!')
         end
     end
 
     function change_andor_kinetic_time(source,eventdata)
         temp = getappdata(main);
         if(~temp.AndorFlag)
-            update_andor_output(source,eventdata,'Parameter not set!')
+            update_andor_output('Parameter not set!')
             beep;
             return
         end
         [ret,status] = AndorGetStatus;
         if(status~=atmcd.DRV_IDLE)
             beep;warning('Parameter not set')
-            update_andor_output(source,eventdata,'Andor busy!')
+            update_andor_output('Andor busy!')
             return
         end
         strstat = all(isstrprop(get(source,'string'),'digit')|isstrprop(get(source,'string'),'punct'))
         if(strstat)
             [ret] = SetKineticCycleTime(str2num(source.String)); %set kinetic cycle time
             CheckWarning(ret);
-            update_andor_output(source,eventdata,['Kinetic Cycle Time: ' source.String ' s']);
+            update_andor_output(['Kinetic Cycle Time: ' source.String ' s']);
         else
             source.String = '30';
             beep
-            update_andor_output(source,eventdata,'Numbers only in this field!')
+            update_andor_output('Numbers only in this field!')
         end
     end
 
@@ -2816,39 +2819,39 @@ build_hygrometer_window(window_visibility_default(6));
     function change_andor_kinetic_length(source,eventdata)
         temp = getappdata(main);
         if(~temp.AndorFlag)
-            update_andor_output(source,eventdata,'Parameter not set!')
+            update_andor_output('Parameter not set!')
             beep;
             return
         end
         [ret,status] = AndorGetStatus;
         if(status~=atmcd.DRV_IDLE)
             beep;warning('Parameter not set')
-            update_andor_output(source,eventdata,'Andor busy!')
+            update_andor_output('Andor busy!')
             return
         end
         if(all(isstrprop(get(source,'string'),'digit')))
             [ret] = SetNumberKinetics(str2num(source.String));
             CheckWarning(ret);
-            update_andor_output(source,eventdata,['Length of Kinetic Series: ' source.String])
+            update_andor_output(['Length of Kinetic Series: ' source.String])
         else
             source.String = 5;
             beep
-            update_andor_output(source,eventdata,'Numbers only in this field!')
+            update_andor_output('Numbers only in this field!')
         end
     end
 
     function change_andor_acquisition(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+        localhandles = get_figure_handles(Andor_window_handle);
         temp = getappdata(main);
         if(~temp.AndorFlag)
-            update_andor_output(source,eventdata,'Connect to Andor First!')
+            update_andor_output('Connect to Andor First!')
             beep;
             return
         end
         [ret,status] = AndorGetStatus;
         if(status~=atmcd.DRV_IDLE)
             beep;warning('Parameter not set')
-            update_andor_output(source,eventdata,'Andor busy!')
+            update_andor_output('Andor busy!')
             return
         end
         if(get(source,'value')==1)
@@ -2856,13 +2859,13 @@ build_hygrometer_window(window_visibility_default(6));
             CheckWarning(ret);
             localhandles(5).Enable = 'off';
             localhandles(7).Enable = 'off';
-            update_andor_output(source,eventdata,'Set to single scan mode')
+            update_andor_output('Set to single scan mode')
         elseif(get(source,'value')==2)
             localhandles(5).Enable = 'on';
             localhandles(7).Enable = 'on';
             [ret] = SetAcquisitionMode(3); % Set acquisition mode; 3 for Kinetic Series
             CheckWarning(ret);
-            update_andor_output(source,eventdata,'Set to kinetic series mode')
+            update_andor_output('Set to kinetic series mode')
         end
         cla(localhandles(19))
     end
@@ -2881,10 +2884,10 @@ build_hygrometer_window(window_visibility_default(6));
         [ret] = AndorShutDown;
         CheckWarning(ret);
         setappdata(main,'AndorFlag',0)
-        update_andor_output(source,eventdata,'Disconnected from Andor')
+        update_andor_output('Disconnected from Andor')
         ShamrockClose();
-        update_andor_output(source,eventdata,'Disconnected from Shamrock')
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+        update_andor_output('Disconnected from Shamrock')
+        localhandles = get_figure_handles(Andor_window_handle);
         localhandles(1).Enable = 'off';
         localhandles(2).Enable = 'off';
         localhandles(10).Enable = 'on';
@@ -2895,15 +2898,15 @@ build_hygrometer_window(window_visibility_default(6));
         [ret] = AbortAcquisition;
         CheckWarning(ret);
         if(ret==20002)
-            update_andor_output(source,eventdata,'Acquisition Aborted')
+            update_andor_output('Acquisition Aborted')
         else
-            update_andor_output(source,eventdata,'Error! Acquisition not aborted!')
+            update_andor_output('Error! Acquisition not aborted!')
         end
     end
 
     function andor_chiller_power(source,eventdata)
         %when turning on
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+        localhandles = get_figure_handles(Andor_window_handle);
         if(get(source,'value'))
             [ret] = CoolerON();
             CheckError(ret);
@@ -2924,7 +2927,7 @@ build_hygrometer_window(window_visibility_default(6));
 
 
     function andor_set_chiller_temp(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+        localhandles = get_figure_handles(Andor_window_handle);
         T = str2num(source.String);
         %force T to reasonable range
         if(T<-60)
@@ -2932,7 +2935,7 @@ build_hygrometer_window(window_visibility_default(6));
         elseif(T>25)
             T = 25;
         elseif(isempty(T))
-            update_andor_output(source,eventdata,'Invalid temperature');
+            update_andor_output('Invalid temperature');
             source.String = '-60';
             return
         end
@@ -2941,8 +2944,8 @@ build_hygrometer_window(window_visibility_default(6));
         CheckError(ret)
     end
 
-    function update_Andor_values(source,eventdata)
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+    function update_Andor_values()
+        localhandles = get_figure_handles(Andor_window_handle);
         [ret, SensorTemp, TargetTemp, AmbientTemp, CoolerVolts] = GetTemperatureStatus();
         localhandles(13).String = [num2str(SensorTemp,'%3.1f') '°C'];
         localhandles(14).String = [num2str(TargetTemp,'%3.f') '°C'];
@@ -2958,7 +2961,7 @@ build_hygrometer_window(window_visibility_default(6));
         setappdata(main,'ShamrockGrating',currentgrating)
         setappdata(main,'ShamrockWavelength',currentcenter)
         setappdata(main,'ShamrockXCal',Xcal);
-        update_andor_output(source,eventdata,['Center wavelength now ' target(1:3) ' nm'])
+        update_andor_output(['Center wavelength now ' target(1:3) ' nm'])
     end
 
     function change_andor_grating(source,eventdata)
@@ -2971,7 +2974,7 @@ build_hygrometer_window(window_visibility_default(6));
         setappdata(main,'ShamrockGrating',currentgrating)
         setappdata(main,'ShamrockWavelength',currentcenter)
         setappdata(main,'ShamrockXCal',Xcal);
-        update_andor_output(source,eventdata,['Changed to grating number ' num2str(target)])
+        update_andor_output(['Changed to grating number ' num2str(target)])
     end
 
     function andor_aqdata(source,eventdata)
@@ -2979,7 +2982,7 @@ build_hygrometer_window(window_visibility_default(6));
         stop(fasttimer)
         stop(errorcatchtimer)
         pause(0.25)
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+        localhandles = get_figure_handles(Andor_window_handle);
         [ret] = SetShutter(1, 0, 1, 1); % auto Shutter
         CheckWarning(ret);
         
@@ -2996,16 +2999,16 @@ build_hygrometer_window(window_visibility_default(6));
         %matches
         if(size(temp.AndorImage,2)<length(temp.AndorTimestamp))
             %trim the number of AndorTimestamps
-            update_andor_output(source,eventdata,'Warning: mismatch in existing')
-            update_andor_output(source,eventdata,'timestamps and spectra!')
-            update_andor_output(source,eventdata,'Trimming timestamps.')
+            update_andor_output('Warning: mismatch in existing')
+            update_andor_output('timestamps and spectra!')
+            update_andor_output('Trimming timestamps.')
             temp.AndorTimestamp(size(temp.AndorImage,2)+1:end) = [];
             setappdata(main,'AndorTimestamp',temp.AndorTimestamp)
         elseif(size(temp.AndorImage,2)>length(temp.AndorTimestamp))
             %insert NaNs into the timestamps to preserve data
-            update_andor_output(source,eventdata,'Warning: mismatch in existing')
-            update_andor_output(source,eventdata,'timestamps and spectra!')
-            update_andor_output(source,eventdata,'NaN-Padding timestamps.')
+            update_andor_output('Warning: mismatch in existing')
+            update_andor_output('timestamps and spectra!')
+            update_andor_output('NaN-Padding timestamps.')
             if(~isempty(temp.AndorTimestamp))
                 temp.AndorTimestamp(end:size(temp.AndorImage,2)) = NaN;
             else
@@ -3017,7 +3020,7 @@ build_hygrometer_window(window_visibility_default(6));
         
         [ret] = StartAcquisition();
         CheckWarning(ret);
-        update_andor_output(source,eventdata,'Starting Acquisition')
+        update_andor_output('Starting Acquisition')
         
         [ret,exposed_time,~,cycle_time] = GetAcquisitionTimings;
         if(localhandles(11).Value==2) %kinetic scan
@@ -3050,7 +3053,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function get_andor_data(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+        localhandles = get_figure_handles(Andor_window_handle);
         
         %get the number of available frames, if any
         [ret,firstimage_ind,lastimage_ind] = GetNumberNewImages;
@@ -3070,7 +3073,7 @@ build_hygrometer_window(window_visibility_default(6));
             else
                 [ret] = SetShutter(1, 2, 1, 1); % close Shutter
                 CheckWarning(ret);
-                update_andor_output(source,eventdata,'Aquisition complete')
+                update_andor_output('Aquisition complete')
             end
             %                 %and save data
             if(isempty(temp.AndorImage))
@@ -3090,7 +3093,7 @@ build_hygrometer_window(window_visibility_default(6));
                 [ret,tempimage] = GetOldestImage(2000);
                 temp.AndorImage(:,temp.AndorImage_startpointer+i) = uint16(tempimage);
                 CheckWarning(ret);
-                update_andor_output(source,eventdata,['Got frame number ' num2str(i)])
+                update_andor_output(['Got frame number ' num2str(i)])
                 setappdata(main,'AndorImage',temp.AndorImage)
             end
             [ret,status] = AndorGetStatus();
@@ -3098,14 +3101,14 @@ build_hygrometer_window(window_visibility_default(6));
                 %if the device is idle, close the shutter
                 [ret] = SetShutter(1, 2, 1, 1); % close Shutter
                 CheckWarning(ret);
-                update_andor_output(source,eventdata,['Aquisition complete'])
+                update_andor_output(['Aquisition complete'])
             end
         end
         
         
     end
 
-    function update_andor_plot_1D(source,eventdata,axishandle)
+    function update_andor_plot_1D(axishandle)
         temp = getappdata(main);
         if(isempty(temp.AndorImage_startpointer))
             %do nothing
@@ -3117,7 +3120,7 @@ build_hygrometer_window(window_visibility_default(6));
                 return
             end
         end
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+        localhandles = get_figure_handles(Andor_window_handle);
         cla(axishandle)
         AndorImage = temp.AndorImage(:,end);
         set(axishandle, 'XTickMode', 'auto', 'XTickLabelMode', 'auto')
@@ -3136,9 +3139,9 @@ build_hygrometer_window(window_visibility_default(6));
         text(axishandle,double(xtextloc),double(ytextloc),str)
     end
 
-    function update_andor_plot_2D(source,eventdata)
+    function update_andor_plot_2D()
         two_d_plottime = tic;
-        localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+        localhandles = get_figure_handles(Andor_window_handle);
         temp = getappdata(main);
         start_ind = max([temp.AndorImage_startpointer+1 1]);
         if(isempty(temp.AndorImage))
@@ -3203,7 +3206,7 @@ build_hygrometer_window(window_visibility_default(6));
     function Andor_Realtime(source,eventdata)
        runloop = source.Value;
        temp = getappdata(main);
-       localhandles = get_figure_handles(source,eventdata,Andor_window_handle);
+       localhandles = get_figure_handles(Andor_window_handle);
           localhandles(1).Enable = 'off';
           localhandles(2).Enable = 'off';
           localhandles(5).Enable = 'off';
@@ -3265,7 +3268,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function hygrometer_comms(source,eventdata)
         
-        localhandles = get_figure_handles(source,eventdata,hygrometer_window_handle);
+        localhandles = get_figure_handles(hygrometer_window_handle);
         if(source.Value)
             %open the connection
             
@@ -3323,27 +3326,7 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
-    function force_hygrometer_cycle(sourc,eventdata)
-        temp = getappdata(main);
-
-        flushinput(temp.Hygrometer_comms)
-        fprintf(temp.Hygrometer_comms,'$ACTION 4 ')
-        for i = 1:2
-            a = fscanf(temp.Hygrometer_comms);
-        end
-    end
-
-    function force_hygrometer_heat(source,eventdata)
-        temp = getappdata(main);
-
-        flushinput(temp.Hygrometer_comms)
-        fprintf(temp.Hygrometer_comms,'$ACTION 1 ')
-        for i = 1:2
-            a = fscanf(temp.Hygrometer_comms);
-        end
-    end
-
-    function force_hygrometer_normal(source,eventdata)
+    function force_hygrometer_normal()
         temp = getappdata(main);
 
         flushinput(temp.Hygrometer_comms)
@@ -3354,7 +3337,7 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
 
-    function update_hygrometer_data(source,eventdata,savelogic)
+    function update_hygrometer_data()
         
         temp = getappdata(main);
         
@@ -3369,7 +3352,7 @@ build_hygrometer_window(window_visibility_default(6));
         Td = str2num(a(eqinx+1:end));
         
         %calculate theoretical dewpoint if available
-        MKShandles = get_figure_handles(source,eventdata,MKS_window_handle);
+        MKShandles = get_figure_handles(MKS_window_handle);
         dwpt_thy = NaN; %set a default value
         if(MKShandles(9).Data(1,2)~=-999)
             %currently assuming RT = 20 degC!
@@ -3380,7 +3363,7 @@ build_hygrometer_window(window_visibility_default(6));
             end
             RH_thy = MKShandles(9).Data(1,3)/100;
             %calculate the theoretical dewpoint
-            Trap_saturation = water_vapor_pressure(source,eventdata,MKShandles(9).Data(1,2)+273.15);
+            Trap_saturation = water_vapor_pressure(MKShandles(9).Data(1,2)+273.15);
             dwpt_thy = (water_dew_pt(Trap_saturation*RH_thy)-273.15);
         end
         
@@ -3394,12 +3377,12 @@ build_hygrometer_window(window_visibility_default(6));
         
         temp.hygrometer_data(end+1,:) = [now Td dwpt_thy];
         setappdata(main,'hygrometer_data',temp.hygrometer_data)
-        update_hygrometer_plot(source,eventdata)
+        update_hygrometer_plot()
     end
 
-    function update_hygrometer_plot(source,eventdata)
+    function update_hygrometer_plot()
         temp = getappdata(main);
-        localhandles = get_figure_handles(source,eventdata,hygrometer_window_handle);
+        localhandles = get_figure_handles(hygrometer_window_handle);
         
         if(size(temp.hygrometer_data,1)>=2)
             plot(localhandles(4),temp.hygrometer_data(:,1),temp.hygrometer_data(:,2),'.',...
