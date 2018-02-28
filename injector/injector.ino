@@ -48,8 +48,10 @@ int tempSensor2_val = 0;
 int humiSensor2_val = 0;
 int tempSensor3_val = 0;
 int humiSensor3_val = 0;
-int dacSetpoint = 0;
+int dacAddr = 0x62;
+int dacSetpoint;
 boolean dacRecvInProgress = false;
+byte transmitStatus;
 
 void setup() {
   Serial.begin(9600);
@@ -65,42 +67,71 @@ void setup() {
   shutter2.attach(servo2PWM);
   // default injector pin to HIGH
   digitalWrite(injectTrigger, HIGH);
-  // set up dac
-  dac.begin(0x62); // default address
-  dac.setFastMode(); // set i2c communication to 400 kHz
-  // important to read dac value in setup: Arduino resets
-  // every time a new serial connection to Matlab starts
-  dacSetpoint = dac.readCurrentDacVal();
+  // check whether i2c device is attached
+  // NB this will silently hang if I2C pins are
+  // being pulled LOW from elsewhere in the circuit
+  Wire.begin();
+  Wire.beginTransmission(dacAddr);
+  transmitStatus = Wire.endTransmission();
+  if (transmitStatus == 0) {
+    // set up dac
+    Serial.println("Connected to I2C device");
+    dac.begin(dacAddr);
+    dac.setFastMode(); // set i2c communication to 400 kHz
+    // important to read dac value in setup: Arduino resets
+    // every time a new serial connection to Matlab starts
+    dacSetpoint = dac.readCurrentDacVal();
+  }
+  else {
+    Serial.print("Did not connect to I2C device. Status ");
+    Serial.println(transmitStatus);
+  }
 }
 
 void loop() {
   if (Serial.available() > 0) {
     byte input = Serial.read();
     // behavior depends on value of input
+    // perform dac tasks only if I2C connected at setup
     if (dacRecvInProgress) {
-      // receive remaining 8 bits for dac and set
-      dacSetpoint += input;
-      // report what's going on
-      Serial.println("Last 8 dac bits");
-      String setpointPrefix = "dacSetpoint: ";
-      String setpointReport = setpointPrefix + dacSetpoint;
-      Serial.println(setpointReport);
-      // only try to set voltage if it's in range
-      if (dacSetpoint >= 0 && dacSetpoint <= 4095) {
-        dac.setVoltageFast(dacSetpoint);
+      if (transmitStatus == 0) {
+        // receive remaining 8 bits for dac and set
+        dacSetpoint += input;
+        // report what's going on
+        Serial.println("Last 8 dac bits");
+        String setpointPrefix = "dacSetpoint: ";
+        String setpointReport = setpointPrefix + dacSetpoint;
+        Serial.println(setpointReport);
+        // only try to set voltage if it's in range
+        if (dacSetpoint >= 0 && dacSetpoint <= 4095) {
+          dac.setVoltageFast(dacSetpoint);
+        }
+        dacRecvInProgress = false;
       }
-      dacRecvInProgress = false;                          
+      else {
+        Serial.println("Invalid command. No I2C connection.");
+      }
     }
     // check for flag bit for start of dac transmission
     else if (input & 0b10000000)  {
+      if (transmitStatus == 0) {
       dacRecvInProgress = true;
       // set high bits of dacSetpoint
       dacSetpoint = (input & 0b00001111) * 256;
       Serial.println("First 4 dac bits");
+      }
+      else {
+        Serial.println("Invalid command. No I2C connection.");
+      }
     }
     // d = check dc setpoint
     else if (input == 'd') {
+      if (transmitStatus == 0) {
       Serial.println(dacSetpoint);
+      }
+      else {
+        Serial.println("Invalid command. No I2C connection.");
+      }
     }
     // s = single injection
     else if (input == 's') {
@@ -111,6 +142,7 @@ void loop() {
     }
     // 1 = 0.1 sec burst, 200Hz
     else if (input == '1') {
+      blinkLED();
       for (int i = 0; i < 20; i++) {
         digitalWrite(injectTrigger, LOW);
         digitalWrite(injectTrigger, HIGH);
@@ -120,6 +152,7 @@ void loop() {
     }
     // 5 = 5 sec burst, 50Hz
     else if (input == '5') {
+      blinkLED();
       for (int i = 0; i < 250; i ++) {
         digitalWrite(injectTrigger, LOW);
         digitalWrite(injectTrigger, HIGH);
