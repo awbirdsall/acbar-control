@@ -18,10 +18,10 @@
 // more fully-featured DAC library than Adafruit's
 #include <MCP4725.h>
 
+// servo and dac objects
 Servo shutter1;
 Servo shutter2;
-
-MCP4725 dac; // create dac object
+MCP4725 dac;
 
 // analog pins
 const int tempSensor1 = 0;
@@ -30,6 +30,7 @@ const int tempSensor2 = 1;
 const int humiSensor2 = 4;
 const int tempSensor3 = 2;
 const int humiSensor3 = 5;
+
 // digital pins
 const int injectTrigger = 11;
 const int contactLED = 12;
@@ -37,171 +38,39 @@ const int servo1PWM = 5;
 const int servo2PWM = 6;
 const int injectPushbutton = 13;
 const int contactSensor = 10;
-// global variables
+
+// global state variables
 volatile int servo1_state = LOW;
 volatile int servo2_state = LOW;
-int lastInjectButtonState = LOW;
-int injectButtonState;
-int tempSensor1_val = 0;
-int humiSensor1_val = 0;
-int tempSensor2_val = 0;
-int humiSensor2_val = 0;
-int tempSensor3_val = 0;
-int humiSensor3_val = 0;
-int dacAddr = 0x62;
+int rawInjectButtonState = LOW;
+int debouncedInjectButtonState;
 int dacSetpoint;
 boolean dacRecvInProgress = false;
 byte transmitStatus;
 
 void setup() {
   Serial.begin(9600);
-  // declare pinMode of digital pins
   pinMode(injectTrigger, OUTPUT);
   pinMode(contactLED, OUTPUT);
   pinMode(servo1PWM, OUTPUT);
   pinMode(servo2PWM, OUTPUT);
   pinMode(injectPushbutton, INPUT);
   pinMode(contactSensor, INPUT);
-  // attach pins to the servo object
   shutter1.attach(servo1PWM);
   shutter2.attach(servo2PWM);
-  // default injector pin to HIGH
   digitalWrite(injectTrigger, HIGH);
-  // check whether i2c device is attached
-  // NB this will silently hang if I2C pins are
-  // being pulled LOW from elsewhere in the circuit
-  Wire.begin();
-  Wire.beginTransmission(dacAddr);
-  transmitStatus = Wire.endTransmission();
-  if (transmitStatus == 0) {
-    // set up dac
-    Serial.println("Connected to I2C device");
-    dac.begin(dacAddr);
-    dac.setFastMode(); // set i2c communication to 400 kHz
-    // important to read dac value in setup: Arduino resets
-    // every time a new serial connection to Matlab starts
-    dacSetpoint = dac.readCurrentDacVal();
-  }
-  else {
-    Serial.print("Did not connect to I2C device. Status ");
-    Serial.println(transmitStatus);
-  }
+  setupDac(0x62); // default address
 }
 
 void loop() {
   if (Serial.available() > 0) {
-    byte input = Serial.read();
-    // behavior depends on value of input
-    // perform dac tasks only if I2C connected at setup
-    if (dacRecvInProgress) {
-      if (transmitStatus == 0) {
-        // receive remaining 8 bits for dac and set
-        dacSetpoint += input;
-        // report what's going on
-        Serial.println("Last 8 dac bits");
-        String setpointPrefix = "dacSetpoint: ";
-        String setpointReport = setpointPrefix + dacSetpoint;
-        Serial.println(setpointReport);
-        // only try to set voltage if it's in range
-        if (dacSetpoint >= 0 && dacSetpoint <= 4095) {
-          dac.setVoltageFast(dacSetpoint);
-        }
-        dacRecvInProgress = false;
-      }
-      else {
-        Serial.println("Invalid command. No I2C connection.");
-      }
-    }
-    // check for flag bit for start of dac transmission
-    else if (input & 0b10000000)  {
-      if (transmitStatus == 0) {
-      dacRecvInProgress = true;
-      // set high bits of dacSetpoint
-      dacSetpoint = (input & 0b00001111) * 256;
-      Serial.println("First 4 dac bits");
-      }
-      else {
-        Serial.println("Invalid command. No I2C connection.");
-      }
-    }
-    // d = check dc setpoint
-    else if (input == 'd') {
-      if (transmitStatus == 0) {
-      Serial.println(dacSetpoint);
-      }
-      else {
-        Serial.println("Invalid command. No I2C connection.");
-      }
-    }
-    // s = single injection
-    else if (input == 's') {
-      digitalWrite(injectTrigger, LOW);
-      digitalWrite(injectTrigger, HIGH);
-      Serial.println("Inject");
-      blinkLED();
-    }
-    // 1 = 0.1 sec burst, 200Hz
-    else if (input == '1') {
-      blinkLED();
-      for (int i = 0; i < 20; i++) {
-        digitalWrite(injectTrigger, LOW);
-        digitalWrite(injectTrigger, HIGH);
-        delay(5);
-        Serial.println(i);
-      }
-    }
-    // 5 = 5 sec burst, 50Hz
-    else if (input == '5') {
-      blinkLED();
-      for (int i = 0; i < 250; i ++) {
-        digitalWrite(injectTrigger, LOW);
-        digitalWrite(injectTrigger, HIGH);
-        delay(20);
-        Serial.println(i);
-      }
-    }
-    // c = close shutter
-    else if (input == 'c') {
-      //servo1_state = HIGH;
-      //servo2_state = HIGH;
-      shutter1.write(30);
-      shutter2.write(30);
-      Serial.println("closing shutters");
-    }
-    // o = open shutter
-    else if (input == 'o') {
-      // servo1_state = LOW;
-      // servo2_state = LOW;
-      shutter1.write(150);
-      shutter2.write(150);
-      Serial.println("opening shutters");
-    }
-    // r = read analog inputs
-    else if (input == 'r') {
-      tempSensor1_val = analogRead(tempSensor1);
-      humiSensor1_val = analogRead(humiSensor1);
-      tempSensor2_val = analogRead(tempSensor2);
-      humiSensor2_val = analogRead(humiSensor2);
-      tempSensor3_val = analogRead(tempSensor3);
-      humiSensor3_val = analogRead(humiSensor3);
-
-      Serial.print(tempSensor1_val);
-      Serial.print(" ");
-      Serial.print(humiSensor1_val);
-      Serial.print(" ");
-      Serial.print(tempSensor2_val);
-      Serial.print(" ");
-      Serial.print(humiSensor2_val);
-      Serial.print(" ");
-      Serial.print(tempSensor3_val);
-      Serial.print(" ");
-      Serial.println(humiSensor3_val);
-
-    }
+    readSerialInputByte();
   }
-  contactCheck();
+  checkCartridgeContact();
   checkInjectButton();
 }
+
+// SUPPORTING FUNCTIONS
 
 // ISR for door open
 void shutterClose() {
@@ -215,46 +84,36 @@ void shutterOpen() {
   servo2_state = LOW;
 }
 
-// depending on the readout of the voltage divider,
-// turn on/off the LED indicator
-void contactCheck() {
+// depending on voltage divider readout,
+// turn LED indicator on/off
+void checkCartridgeContact() {
   (digitalRead(contactSensor)) ?
   digitalWrite(contactLED, HIGH)  : digitalWrite(contactLED, LOW);
 }
 
-int lastDebounceTime;
-int debounceDelay = 40;
-int counter = 0;
-
 void blinkLED() {
   for (int numloops = 1; numloops < 5; numloops++) {
-    // turn the pin on:
     digitalWrite(contactLED, HIGH);
     delay(50);
-    // turn the pin off:
     digitalWrite(contactLED, LOW);
     delay(50);
   }
 }
 
 void checkInjectButton() {
+  int lastDebounceTime;
+  int debounceDelay = 40;
   int reading = digitalRead(injectPushbutton);
-  // If the switch changed, due to noise or pressing:
-  if (reading != lastInjectButtonState) {
-    // reset the debouncing timer
+  // reset debounce timer when raw button state changed
+  if (reading != rawInjectButtonState) {
     lastDebounceTime = millis();
   }
-
+  // filter out bounce
   if ((millis() - lastDebounceTime) > debounceDelay) {
-    // whatever the reading is at, it's been there for longer
-    // than the debounce delay, so take it as the actual current state:
-
-    // if the button state has changed:
-    if (reading != injectButtonState) {
-      injectButtonState = reading;
-
-      // only toggle the LED if the new button state is HIGH
-      if (injectButtonState == HIGH) {
+    if (reading != debouncedInjectButtonState) {
+      debouncedInjectButtonState = reading;
+      if (debouncedInjectButtonState == HIGH) {
+        // trigger injection
         digitalWrite(injectTrigger, LOW);
         digitalWrite(injectTrigger, HIGH);
         Serial.println("Injected");
@@ -262,8 +121,148 @@ void checkInjectButton() {
       }
     }
   }
+  // update rawInjectButtonState every loop
+  rawInjectButtonState = reading;
+}
 
-  // save the reading.  Next time through the loop,
-  // it'll be the lastButtonState:
-  lastInjectButtonState = reading;
+void setupDac(int addr) {
+  // first, check whether i2c device is attached
+  // NB this will silently hang if I2C pins are
+  // being pulled LOW from elsewhere in the circuit
+  Wire.begin();
+  Wire.beginTransmission(addr);
+  transmitStatus = Wire.endTransmission();
+  if (transmitStatus == 0) {
+    Serial.println("Connected to I2C device");
+    dac.begin(addr);
+    dac.setFastMode(); // set i2c communication to 400 kHz
+    // important to read dac value in setup: Arduino resets
+    // every time a new serial connection to Matlab starts
+    dacSetpoint = dac.readCurrentDacVal();
+  }
+  else {
+    Serial.print("Did not connect to I2C device. Status ");
+    Serial.println(transmitStatus);
+  }
+}
+
+void readSerialInputByte() {
+  // behavior depends on value of input:
+  // 0b1xxx#### : start transmitting 12-bit value to DAC,
+  //              #### are four highest bits, first '1'
+  //              is flag, xxx are ignored
+  // (any 8 bits) : transmit 8 lowest bits to DAC, if
+  //                previous byte was first DAC byte
+  // 'd' : print ACII string of 12-bit DAC setpoint
+  // 's' : single droplet injection
+  // '1' : 20 droplet burst (0.1 sec, 200Hz)
+  // '5' : 250 droplet burst (5 sec, 50Hz)
+  // 'c' : close shutter
+  // 'o' : open shutter
+  // 'r' : read analog inputs (3x temp/humidity channels)
+  //
+  // perform dac tasks only if I2C connected at setup,
+  // otherwise send string describing problem
+  //
+  // silently ignore any other received byte
+
+  byte input = Serial.read();
+
+  if (dacRecvInProgress) {
+    if (transmitStatus == 0) {
+      // receive remaining 8 bits for dac and set
+      dacSetpoint += input;
+      // report what's going on
+      Serial.println("Last 8 dac bits");
+      String setpointPrefix = "dacSetpoint: ";
+      String setpointReport = setpointPrefix + dacSetpoint;
+      Serial.println(setpointReport);
+      // only try to set voltage if it's in range
+      if (dacSetpoint >= 0 && dacSetpoint <= 4095) {
+        dac.setVoltageFast(dacSetpoint);
+      }
+      dacRecvInProgress = false;
+    }
+    else {
+      Serial.println("Invalid command. No I2C connection.");
+    }
+  }
+  else if (input & 0b10000000)  {
+    if (transmitStatus == 0) {
+    dacRecvInProgress = true;
+    // set high bits of dacSetpoint
+    dacSetpoint = (input & 0b00001111) * 256;
+    Serial.println("First 4 dac bits");
+    }
+    else {
+      Serial.println("Invalid command. No I2C connection.");
+    }
+  }
+  // d = check dc setpoint
+  else if (input == 'd') {
+    if (transmitStatus == 0) {
+    Serial.println(dacSetpoint);
+    }
+    else {
+      Serial.println("Invalid command. No I2C connection.");
+    }
+  }
+  else if (input == 's') {
+    digitalWrite(injectTrigger, LOW);
+    digitalWrite(injectTrigger, HIGH);
+    Serial.println("Inject");
+    blinkLED();
+  }
+  else if (input == '1') {
+    blinkLED();
+    for (int i = 0; i < 20; i++) {
+      digitalWrite(injectTrigger, LOW);
+      digitalWrite(injectTrigger, HIGH);
+      delay(5);
+      Serial.println(i);
+    }
+  }
+  else if (input == '5') {
+    blinkLED();
+    for (int i = 0; i < 250; i ++) {
+      digitalWrite(injectTrigger, LOW);
+      digitalWrite(injectTrigger, HIGH);
+      delay(20);
+      Serial.println(i);
+    }
+  }
+  else if (input == 'c') {
+    //servo1_state = HIGH;
+    //servo2_state = HIGH;
+    shutter1.write(30);
+    shutter2.write(30);
+    Serial.println("closing shutters");
+  }
+  else if (input == 'o') {
+    // servo1_state = LOW;
+    // servo2_state = LOW;
+    shutter1.write(150);
+    shutter2.write(150);
+    Serial.println("opening shutters");
+  }
+  else if (input == 'r') {
+    int tempSensor1_val = analogRead(tempSensor1);
+    int humiSensor1_val = analogRead(humiSensor1);
+    int tempSensor2_val = analogRead(tempSensor2);
+    int humiSensor2_val = analogRead(humiSensor2);
+    int tempSensor3_val = analogRead(tempSensor3);
+    int humiSensor3_val = analogRead(humiSensor3);
+
+    Serial.print(tempSensor1_val);
+    Serial.print(" ");
+    Serial.print(humiSensor1_val);
+    Serial.print(" ");
+    Serial.print(tempSensor2_val);
+    Serial.print(" ");
+    Serial.print(humiSensor2_val);
+    Serial.print(" ");
+    Serial.print(tempSensor3_val);
+    Serial.print(" ");
+    Serial.println(humiSensor3_val);
+  }
 }
