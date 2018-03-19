@@ -123,7 +123,7 @@ setappdata(main,'fringe_image',[]);
 setappdata(main,'microscope_image',[]);
 setappdata(main,'hygrometer_data',[]);
 setappdata(main,'voltage_data_nofeedback',[]);
-setappdata(main,'voltage_dc_trap',0); % default DC trap voltage 0 V
+setappdata(main,'voltage_dc_trap',-1); % DC trap voltage, -1 before initialized
 
 % initialize *****_window_handle vars in control_acbar()'s scope.
 % the `build_*****_window` functions, as nested functions, then share the
@@ -1296,7 +1296,7 @@ build_hygrometer_window(window_visibility_default(6));
                 'fringe_source_data';'IdealY';'RampFlag';'AndorCalPoly';...
                 'AndorFlag';'UPSInumber';'camera1Flag';'camera2Flag';...
                 'FrameNumber';'UPSInumber';'ShamrockGrating';...
-                'ShamrockXCal';'MKS946_comm';'LaudaRS232';'DS345_DC';...
+                'ShamrockXCal';'MKS946_comm';'LaudaRS232';...
                 'DS345_AC';'arduino_comm';'JulaboRS232';...
                 'Hygrometer_comms'};
             for i = 1:length(listofnames)
@@ -1613,16 +1613,18 @@ build_hygrometer_window(window_visibility_default(6));
     function mholdposition(source,eventdata)
         stop(fasttimer)
         temp = getappdata(main) ;
-        if(get(source,'value')&&isfield(temp,'DS345_DC'))
+        % temp.voltage_dc_trap is -1 if Arduino comms haven't been
+        % initialized with connection to DAC.
+        if(get(source,'value')&&temp.voltage_dc_trap>=0)
             set(source,'string','Holding...')
             currenttime = clock;
             setappdata(main,'PID_timestamp',currenttime)
             setappdata(main,'PID_Iterm',0);
             setappdata(main,'PID_DCclicktime',currenttime)
             localhandles = get_figure_handles(microscope_window_handle);
-            setappdata(main,'PID_DCvolt',str2num(localhandles(20).String(1:end-3)));
+            setappdata(main,'PID_DCvolt',temp.voltage_dc_trap);
             setappdata(main,'PID_ACfreq',str2num(localhandles(12).String(1:end-3)));
-        elseif(get(source,'value')==0&&isfield(temp,'DS345_DC'))
+        elseif(get(source,'value')==0&&temp.voltage_dc_trap>=0)
             set(source,'string','Hold Position')
         else
             set(source,'string','Open Comm First')
@@ -1649,35 +1651,34 @@ build_hygrometer_window(window_visibility_default(6));
         dt = etime(currenttime,temp.PID_timestamp);
         localhandles = get_figure_handles(microscope_window_handle);
         
-        SRSoffs_inp = str2num(localhandles(end-20).String(1:end-3));
+        old_dc = temp.voltage_dc_trap;
         if(dt<20)
             %calculate the integrated error term
             Iterm = error*ki*dt+temp.PID_Iterm; %update integral term
-            %calculate the derivitive error term
+            %calculate the derivative error term
             Dterm = (ycentroid-temp.PID_oldvalue)*kd/dt;
-            newY = SRSoffs_inp+error*kp+Iterm+Dterm;
+            new_dc = old_dc+error*kp+Iterm+Dterm;
         else
-            newY = SRSoffs_inp;%+error*kd;
-            Iterm = temp.PID_Iterm; %pass the integrated value without changing it
+            new_dc = old_dc;%+error*kd;
+            Iterm = temp.PID_Iterm; %leave integrated value unchanged
         end
-        %TODO: add code to prevent repeated crossing of "click" points in
-        %SRS function generator
         
-        localhandles(end-20).String(1:end-3) = num2str(newY,'%+07.4f');
-        SRSoffs(newY)
+        %update DC setpoint
+        set_dc(new_dc)
         
         %try to adapt AC voltage as DC changes
-        freqfactor = abs(sqrt(1/(newY/temp.PID_DCvolt)));
+        freqfactor = abs(sqrt(1/(new_dc/temp.PID_DCvolt)));
         newAC = freqfactor*temp.PID_ACfreq;
         newAC = max([100 newAC]); %keep it above 100 Hz
         newAC = min([500 newAC]); %and below 400 Hz
         
         %override new AC frequency if voltage is less than 5 V (it is too
         %agressive in this region as it is based on relative change)
-        if(abs(newY<=0.005))
+        if(abs(new_dc<=5))
            newAC = temp.PID_ACfreq; 
         end
         
+        %update AC window text and setpoint
         localhandles(12).String(1:end-3) = num2str(newAC,'%07.3f');
         SRSfreq(newAC)
         
@@ -1935,16 +1936,12 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
-    function set_dc_text(source,eventdata)
-        dc_trap = str2num(get(source,'string'));
-        set_dc(dc_trap);
-        % update string in window that preserves state
-        stat = num2str(dc_trap,'%+07.4f');
-        microhandles = get_figure_handles(microscope_window_handle);
-        set(microhandles(end-20),'string',[stat ' V '])
-    end
-
     function set_dc(dc_trap)
+        %Update trap DC setpoint by performing 3 tasks:
+        %(1) Set DC voltage with the Arduino.
+        %(2) Update DC setpoint state stored in 'main.voltage_dc_trap'
+        %(3) Update display string, which is just for display.
+
         % send DC setpoint to Arduino with MCP4725 DAC installed
         % assumes 12-bit DAC with 0 to +5 V full range output, which is
         % then amplified to 0 to +300 V scale
@@ -1973,6 +1970,15 @@ build_hygrometer_window(window_visibility_default(6));
                 'voltage setpoint out of range');
             throw(ME);
         end
+
+        % display new DC setpoint in microscope window
+        microhandles = get_figure_handles(microscope_window_handle);
+        new_dc_str = [num2str(dc_trap,'%+04.1f') ' V'];
+        microhandles(end-20).String = new_dc_str;
+
+        % update voltage_dc_trap
+        temp.voltage_dc_trap = dc_trap;
+        setappdata(main,'voltage_dc_trap',temp.voltage_dc_trap);
     end
         
 %% functions that actually do stuff for the SRS function generator
@@ -2029,19 +2035,12 @@ build_hygrometer_window(window_visibility_default(6));
         %AC FREQ localhandles(end-28)
         %AC AMP localhandles(end-36)
         if(strcmp(SRSvalue,'OFFS'))
-            % Set DC voltage with the Arduino using set_dc().
-            % The DC setpoint state is stored in 'voltage_dc_trap'
-            % within `main`. The display string is just for display.
+            % Misnomer: actually update trap DC, controlled via Arduino
+            % TODO refactor out this code from "SRS"-labeled functions
             old_dc = temp.voltage_dc_trap;
             dc_increment = str2num(source.Tag(9:end));
             new_dc = old_dc+dc_increment;
-            % send command to update setpoint
             set_dc(new_dc)
-            % display new DC setpoint
-            new_dc_str = [num2str(new_dc,'%+04.1f') ' V'];
-            localhandles(end-20).String = new_dc_str;
-            temp.voltage_dc_trap = new_dc;
-            setappdata(main,'voltage_dc_trap',temp.voltage_dc_trap);
         elseif(strcmp(SRSvalue,'AMP '))
             SRSnumeric = str2num(localhandles(end-36).String(1:end-3));
             SRSunit = localhandles(end-36).String(end-2:end);
@@ -2057,11 +2056,6 @@ build_hygrometer_window(window_visibility_default(6));
             localhandles(end-28).String(1:end-3) = num2str(SRSnumeric+SRSincrement,'%07.3f');
             eval(['temp.DS345_' SRSwhichone '.set_' strtrim(lower(SRSvalue)) '(''' newsetpoint ''')'])
         end
-    end
-
-    function SRSoffs(setY)
-        temp = getappdata(main);
-        temp.DS345_DC.set_offs(num2str(setY))
     end
 
     function SRSfreq(newAC)
