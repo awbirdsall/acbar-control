@@ -92,12 +92,12 @@ fastupdatetext = uicontrol(main,'style','text','string','Fast update: 0.??? s',.
 slowupdatetext = uicontrol(main,'style','text','string','Slow update at ??:??:??',...
     'position',[10 80 150 15]);
 
-%% Initialization tasks for main window
+%% Initialize main window
 fasttimer = timer('TimerFcn',@fasttimerFcn,'ExecutionMode','fixedRate',...
     'Period',0.10);
 
-errorcatchtimer = timer('TimerFcn',@errorcatchFcn,'ExecutionMode','fixedRate',...
-    'Period',30);
+errorcatchtimer = timer('TimerFcn',@errorcatchFcn,...
+    'ExecutionMode','fixedRate','Period',30);
 
 
 %set Flags for camera
@@ -118,7 +118,7 @@ setappdata(main,'Laudadatalog',[]);
 setappdata(main,'Julabodatalog',[]);
 setappdata(main,'fringe_timestamp',[]);
 setappdata(main,'fringe_compressed',[]);
-setappdata(main,'image_timestamp',[]); %tunestamp for images
+setappdata(main,'image_timestamp',[]); %timestamp for images
 setappdata(main,'fringe_image',[]);
 setappdata(main,'microscope_image',[]);
 setappdata(main,'hygrometer_data',[]);
@@ -935,6 +935,19 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function fasttimerFcn(source,eventdata)
+        % Run the main loop of the program.
+        %
+        % Generally needs to be running for anything to happen, except for
+        % other callback functions triggered directly by button press.
+        %
+        % Set up as TimerFcn callback for fasttimer, which executes it
+        % with frequency set by timer's "Period" argument (e.g., 0.1 s).
+        % In turn, fasttimer_startstop() controls fasttimer as
+        % a callback for a "Start/Stop background timer" button press.
+        %
+        % (NB other functions, including fasttimerFcn, also stop/start
+        % fasttimer during time-consuming parts of their execution)
+
         
         fastloop = tic;
         temp = getappdata(main);
@@ -942,12 +955,23 @@ build_hygrometer_window(window_visibility_default(6));
         %make default value
         feedbackOK = 0;
         
-        FrameNumber = mod(temp.FrameNumber+1,1000); %change this one to update SLOW speed
-        updatelogic = mod(FrameNumber,5)==0; %update every fifth frame
-        savelogic = (mod(FrameNumber,100)==0); %update about every 100 sec
-        datalogic = (mod(FrameNumber,50)==0); %update about every 10 s
+        %% control how often different parts of fasttimerFcn actually run
+        % increment FrameNumber every time function runs (frequency set by
+        % Period argument of fasttimer, e.g., 0.1 s).
+        % FrameNumber also controls save to file frequency.
+        FrameNumber = mod(temp.FrameNumber+1,1000);
+        % updatelogic is only related to calling update_cameras()
+        updatelogic = mod(FrameNumber,5)==0;
+        % NB savelogic is poorly named. Does not control save to file.
+        % Instead controls whether certain updated values are written to
+        % `main`.
+        savelogic = (mod(FrameNumber,100)==0);
+        % datalogic controls whether the 'slow' part of the function runs.
+        % NB save to file can only happen if it's possible for datalogic
+        % to be TRUE when FrameNumber==0
+        datalogic = (mod(FrameNumber,50)==0);
 
-        %check if any connected hardware needs to be started or stopped
+        %% check if any connected hardware needs to be started or stopped
         if(~isempty(ishandle(microscope_window_handle))&&~isempty(ishandle(fringe_window_handle)))
             [feedbackOK,fringe_compressed,fringe_image,microscope_image] = update_cameras(source,eventdata,temp,updatelogic,datalogic);
         end
@@ -956,7 +980,8 @@ build_hygrometer_window(window_visibility_default(6));
         set(fastupdatetext,'string',['Fast update: ' num2str(fasttime) ' s']);
         setappdata(main,'FrameNumber',FrameNumber)
         
-        % remainder of fasttimerFcn only runs when `datalogic` true
+        %% remainder of fasttimerFcn only runs when `datalogic` true
+        % reaching end of this code updates 'slow' timestamp
         if(datalogic)
             stop(fasttimer)
             if(exist('fringe_compressed','var')&&~isempty(fringe_compressed))
@@ -996,7 +1021,7 @@ build_hygrometer_window(window_visibility_default(6));
                 update_Julabo(savelogic);
             end
             if(isfield(temp,'arduino_comm')&&savelogic)
-                update_arduino(source,eventdata,savelogic);
+                update_arduino(source,eventdata);
             end
             if(isfield(temp,'Hygrometer_comms')&&datalogic)
                 update_hygrometer_data()
@@ -1123,7 +1148,8 @@ build_hygrometer_window(window_visibility_default(6));
             set(slowupdatetext,'string',['Slow: ' datestr(now)])
             
             % save contents of `temp` to file every time datalogic is true
-            % (not just when savelogic is true), using v7.3 .mat format.
+            % and FrameNumber rolls over to 0 (independent of savelogic),
+            % using v7.3 .mat format.
             if(save_checkbox.Value&FrameNumber==0)
                 % define absolute save file path in acbar_data folder
                 save_path = ['C:\Users\Huisman\Documents\acbar_data\' ...
@@ -1902,7 +1928,7 @@ build_hygrometer_window(window_visibility_default(6));
         plot(localhandles(end-1),temp.UPSIdata(:,1),temp.UPSIdata(:,1+(temp.UPSInumber-1)*2+2),'.');
     end
 
-    function update_arduino(source,eventdata,savelogic);
+    function update_arduino(source,eventdata)
         temp = getappdata(main);
         if(temp.arduino_comm.BytesAvailable~=0)
             flushinput(temp.arduino_comm);
