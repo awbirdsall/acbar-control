@@ -244,7 +244,8 @@ build_hygrometer_window(window_visibility_default(6));
         mhold_position = uicontrol(microscope_window_handle,'style','togglebutton',...
             'string','Hold Position',...
             'position',[10 160 100 20],...
-            'callback',@mholdposition);
+            'callback',@mholdposition,...
+            'tag','mhold_position');
         
         ax1clear = uicontrol(microscope_window_handle,'style','pushbutton','string','cla(ax1)',...
             'position',[10 130 100 20],...
@@ -486,7 +487,8 @@ build_hygrometer_window(window_visibility_default(6));
         
         fopt_checkbox = uicontrol('parent',fringe_window_handle,'style','checkbox',...
             'string','Optimize fringe pattern',...
-            'value',0,'position',[10 125, 140, 20]);
+            'value',0,'position',[10 125, 140, 20],...
+            'tag','fopt_checkbox');
         
         fgain_auto = uicontrol('parent',fringe_window_handle,...
             'style','checkbox','string','Auto Gain',...
@@ -1368,12 +1370,20 @@ build_hygrometer_window(window_visibility_default(6));
             IM1 = getdata(temp.microscope_video_handle,1,'uint8');    %get image from camera
             IM1_small = imresize(IM1,[480 640]);
             [~,ycentroid,feedbackOK] = microscope_blob_annotation(IM1_small,updatelogic);
-            [localhandles] = get_figure_handles(microscope_window_handle);
-            if(get(localhandles(2+6+21),'value')&&feedbackOK&&datalogic)
-                if(isfield(temp,'PID_oldvalue'))
-                    microscope_feedback_hold(source,eventdata,ycentroid);
-                else
-                    setappdata(main,'PID_oldvalue',ycentroid);
+            % identify handle for hold button by tag
+            hold_button_handle = findobj(microscope_window_handle,...
+                '-depth',1,'tag','mhold_position');
+            % warn if findobj didn't find anything
+            if isempty(hold_button_handle)
+                warning('did not find window with tag mhold_position')
+            else
+                hold_button_depressed = get(hold_button_handle,'value');
+                if(hold_button_depressed&&feedbackOK&&datalogic)
+                    if(isfield(temp,'PID_oldvalue'))
+                        microscope_feedback_hold(source,eventdata,ycentroid);
+                    else
+                        setappdata(main,'PID_oldvalue',ycentroid);
+                    end
                 end
             end
             microscope_image = uint8(IM1_small);
@@ -1388,9 +1398,18 @@ build_hygrometer_window(window_visibility_default(6));
             xtextloc = 225;
             ytextloc = 450;
             text(localhandles(3).Children(1).Children(1),double(xtextloc),double(ytextloc),str,'color','white')
-            if(get(localhandles(2),'value'))
-                [fringe_compressed] = fringe_annotation(IM2_small);
-                fringe_image = IM2_small;
+            % do fringe annotation if turned on
+            fringe_button_handle = findobj(fringe_window_handle,...
+                '-depth',1,'tag','fopt_checkbox');
+            % warn if findobj didn't find anything
+            if isempty(fringe_button_handle)
+                warning('did not find window with tag fopt_checkbox')
+            else
+                fringe_button_depressed = get(fringe_button_handle,'value');
+                if(fringe_button_depressed)
+                    [fringe_compressed] = fringe_annotation(IM2_small);
+                    fringe_image = IM2_small;
+                end
             end
         elseif(camera1running&&camera2running&&updatelogic)
             trigger(temp.microscope_video_handle);
@@ -1400,11 +1419,20 @@ build_hygrometer_window(window_visibility_default(6));
             IM1_small = imresize(IM1,[480 640]);
             [~,ycentroid,feedbackOK] = microscope_blob_annotation(IM1_small,updatelogic);
             [mlocalhandles] = get_figure_handles(microscope_window_handle);
-            if(get(mlocalhandles(2+6+21),'value')&&feedbackOK&&datalogic==1)
-                if(isfield(temp,'PID_oldvalue'))
-                    microscope_feedback_hold(source,eventdata,ycentroid);
-                else
-                    setappdata(main,'PID_oldvalue',ycentroid);
+            % identify handle for hold button by tag
+            hold_button_handle = findobj(microscope_window_handle,...
+                '-depth',1,'tag','mhold_position');
+            % warn if findobj didn't find anything
+            if isempty(hold_button_handle)
+                warning('did not find window with tag mhold_position')
+            else
+                hold_button_depressed = get(hold_button_handle,'value');
+                if(hold_button_depressed&&feedbackOK&&datalogic==1)
+                    if(isfield(temp,'PID_oldvalue'))
+                        microscope_feedback_hold(source,eventdata,ycentroid);
+                    else
+                        setappdata(main,'PID_oldvalue',ycentroid);
+                    end
                 end
             end
             IM2_small = imresize(IM2,[480 640]);
@@ -1416,9 +1444,18 @@ build_hygrometer_window(window_visibility_default(6));
             ytextloc = 450;
             text(flocalhandles(3).Children(1).Children(1),...
                 double(xtextloc),double(ytextloc),str,'color','white')
-            if(get(flocalhandles(2),'value'))
-                [fringe_compressed] = fringe_annotation(IM2_small);
-                fringe_image = IM2_small;
+            % do fringe annotation if turned on
+            fringe_button_handle = findobj(fringe_window_handle,...
+                '-depth',1,'tag','fopt_checkbox');
+            % warn if findobj didn't find anything
+            if isempty(fringe_button_handle)
+                warning('did not find window with tag fopt_checkbox')
+            else
+                fringe_button_depressed = get(fringe_button_handle,'value');
+                if(fringe_button_depressed)
+                    [fringe_compressed] = fringe_annotation(IM2_small);
+                    fringe_image = IM2_small;
+                end
             end
             microscope_image = uint8(IM1_small);
         end
@@ -1572,26 +1609,30 @@ build_hygrometer_window(window_visibility_default(6));
             x_centroid = -999;
             y_centroid = -999;
             feedbackOK = 0;
+            % stop dc feedback hold if no blob detected
             if(get(localhandles(end-11),'value'))
                 set(localhandles(end-11),'string','Stopped Holding')
-                %and stop the ramp, if feedback was active note it should be
-                %possible to run a ramp with no feedback but turning feedback
-                %on and having it turn itself off will stop the ramp
-                MKShandles = get_figure_handles(MKS_window_handle);
-                set(MKShandles(9),'enable','on')
-                setappdata(main,'RampFlag',0)
-                set(MKShandles(5),'string','Ramp Trap')
-                set(MKShandles(4),'string','Stopped Ramp')
-                set(MKShandles(4),'value',0)
-                %and delete the table entries that have already passed
-                data = MKShandles(9).Data;
-                %get rid of the points that have already occurred
+                % stop the ramp, if feedback was active. note it should be
+                % possible to run a ramp with no feedback, but turning
+                % feedback on and having it turn itself off will stop ramp.
                 temp = getappdata(main);
-                data(2:find(MKShandles(9).Data(:,1)<((now-temp.RampTime_init)*24),1,'last'),:) = [];
-                %and adjust timestamps to match
-                data(2:end,1) = data(2:end,1)-(now-temp.RampTime_init)*24;
-                MKShandles(9).Data = data;
-                
+                if(temp.RampFlag)
+                    MKShandles = get_figure_handles(MKS_window_handle);
+                    set(MKShandles(9),'enable','on')
+                    setappdata(main,'RampFlag',0)
+                    set(MKShandles(5),'string','Ramp Trap')
+                    set(MKShandles(4),'string','Stopped Ramp')
+                    set(MKShandles(4),'value',0)
+                    % delete table entries that have already passed
+                    data = MKShandles(9).Data;
+                    data_times = MKShandles(9).Data(:,1);
+                    now_data_time = (now-temp.RampTime_init)*24;
+                    end_prev_data = find(data_times<now_data_time,1,'last');
+                    data(2:end_prev_data,:) = [];
+                    % adjust timestamps to match
+                    data(2:end,1) = data(2:end,1)-now_data_time;
+                    MKShandles(9).Data = data;
+                end
                 
             end
             set(localhandles(end-11),'value',0)
