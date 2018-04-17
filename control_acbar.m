@@ -2439,6 +2439,10 @@ build_hygrometer_window(window_visibility_default(6));
 
 
     function MKScomms(source,eventdata)
+    % MKSCOMMS  Open or close serial communication with MKS 946 controller.
+    %
+    %   Serial object is set to main.MKS946_comm.
+
         if(get(source,'value'))
             %open the port and lock the selector
             %get identity of port
@@ -2490,74 +2494,82 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function update_MKS_values(source,eventdata,savelogic)
-        %query the state of ch3 and 4
-        %hard code for now
+    % UPDATE_MKS_VALUES  Update values for MKS controller.
+    %
+    %   Dispatched as part of datalogic branch of fasttimerFcn.
+
+        %query mode ('QMDn?') of ch3 and 4 (hard coded)
         localhandles = get_figure_handles(MKS_window_handle);
-        stat = MKSsend(source,eventdata,'QMD3?');
-        switch stat %switch on response only
+        % for readability, these seem to be what the different localhandles
+        % correspond to
+        ch3_bg = localhandles(11); % ch 3 button group
+        ch4_bg = localhandles(10); % ch 4 button group
+        hum_table = localhandles(9); % humidity table
+
+        md3 = MKSsend(source,eventdata,'QMD3?');
+        switch md3
             case 'OPEN',
-                localhandles(11).Children(5).Value = 1;
+                ch3_bg.Children(5).Value = 1;
                 MKS3onoff = NaN;
             case 'CLOSE',
-                localhandles(11).Children(4).Value = 1;
+                ch3_bg.Children(4).Value = 1;
                 MKS3onoff = 0;
             case 'SETPOINT'
-                localhandles(11).Children(3).Value = 1;
+                ch3_bg.Children(3).Value = 1;
                 MKS3onoff = 1;
         end
         
-        stat = MKSsend(source,eventdata,'QMD4?');
-        switch stat
+        md4 = MKSsend(source,eventdata,'QMD4?');
+        switch md4
             case 'OPEN',
-                localhandles(10).Children(5).Value = 1;
+                ch4_bg.Children(5).Value = 1;
                 MKS4onoff = NaN;
             case 'CLOSE',
-                localhandles(10).Children(4).Value = 1;
+                ch4_bg.Children(4).Value = 1;
                 MKS4onoff = 0;
             case 'SETPOINT'
-                localhandles(10).Children(3).Value = 1;
+                ch4_bg.Children(3).Value = 1;
                 MKS4onoff = 1;
         end
         
-        %manually query setpoints
-        stat = MKSsend(source,eventdata,'QSP4?');
-        F_humid = str2num(stat)*MKS4onoff;
-        %clean up formatting
-        stat = sprintf('%.2f',str2num(stat));
+        % query ch4 setpoint
+        sp4 = MKSsend(source,eventdata,'QSP4?');
+        F_humid = str2num(sp4)*MKS4onoff;
+        % format setpoint as string and (probably?) update textbox
+        sp4_str = sprintf('%.2f',str2num(sp4));
+        set(ch4_bg.Children(2),'string',sp4_str(1:4));
         
-        set(localhandles(10).Children(2),'string',stat(1:4)); %keep only three sig figs
+        % query ch3 setpoint
+        sp3 = MKSsend(source,eventdata,'QSP3?');
+        F_dry = str2num(sp3)*MKS3onoff;
+        sp3_str = sprintf('%.2f',str2num(sp3));
+        set(ch3_bg.Children(2),'string',sp3_str(1:4));
         
-        %manually query setpoints
-        stat = MKSsend(source,eventdata,'QSP3?');
-        F_dry = str2num(stat)*MKS3onoff;
-        stat = sprintf('%.2f',str2num(stat));
-        set(localhandles(11).Children(2),'string',stat(1:4));
+        % fill in values of table
+        hum_table.Data(1,4) = F_dry+F_humid;
         
-        %and fill in values of table
-        localhandles(9).Data(1,4) = F_dry+F_humid;
-        
-        %then fill in actual values
+        % query ch3 and ch4 flow rates, update displayed values
         stat = MKSsend(source,eventdata,'FR3?');
         stat = sprintf('%.2f',str2num(stat));
-        localhandles(11).Children(1).String = [stat ' sccm'];
+        ch3_bg.Children(1).String = [stat ' sccm'];
         
         stat = MKSsend(source,eventdata,'FR4?');
         stat = sprintf('%.2f',str2num(stat));
-        localhandles(10).Children(1).String = [stat ' sccm'];
+        ch4_bg.Children(1).String = [stat ' sccm'];
         
-        %and fill in RH if T is known
-        if(localhandles(9).Data(1,2)~=-999)
-            %currently assuming RT = 20 degC!
+        % calculate RH based on flow ratio and bath temperature
+        % (assumes 19 C if not provided)
+        if(hum_table.Data(1,2)~=-999)
             if(isa(str2num(localhandles(22).String),'numeric'))
                 Bath_T = str2num(localhandles(22).String);
             else
                 Bath_T = 19;
             end
             Bath_saturation = water_vapor_pressure(Bath_T+273.15);
-            Trap_saturation = water_vapor_pressure(localhandles(9).Data(1,2)+273.15);
+            Trap_saturation = water_vapor_pressure(hum_table.Data(1,2)+273.15);
             RH = round(100*F_humid/(F_humid+F_dry)*Bath_saturation/Trap_saturation,1);
             if(~isempty(RH))
-                localhandles(9).Data(1,3) = RH;
+                hum_table.Data(1,3) = RH;
             end
         end
         
@@ -2569,6 +2581,13 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function [response] = MKSsend(source,eventdata,varargin)
+    % MKSSEND  Send message to MKS controller and return response.
+    %   MKS 946 query string format: @<aaa><Command>?;FF
+    %   <aaa> is address, 1 to 254
+    %   string within varargin becomes <Command>
+    %   MKS 946 response string format: @<aaa>ACK<Response>;FF
+    %   Common commands are QMDn, QSPn, FRn. See MKS manual for full list.
+
         temp = getappdata(main);
         localhandles = get_figure_handles(MKS_window_handle);
         if(length(varargin)==1)
@@ -2576,21 +2595,26 @@ build_hygrometer_window(window_visibility_default(6));
         else
             arg1 = localhandles(14).String;
         end
+
         querytext = ['@253' arg1 ';FF'];
         data1 = query(temp.MKS946_comm, querytext);
         if(data1=='F')
-            warning([datestr(now) ' MKS946 out of sequence. Performing additional read'])
+            warning([datestr(now) ' MKS946 out of sequence. Performing '...
+                'additional read. (Command=' arg1 ')'])
             data1 = fscanf(temp.MKS946_comm);
         end
         if(isempty(data1))
             error('No data returned by MKS RS232')
         end
+        % not sure why this additional read happens... (AWB 17 Apr 2018)
         data2 = fscanf(temp.MKS946_comm);
-        %check for errors
+        % check for errors
         if(strcmp(data1(5:7),'NAK'))
             error('Communication error to MKS!')
         end
-        response = data1(8:end-2); %trim pre- and post-statements
+        % return <Response> portion of response string (see format above)
+        response = data1(8:end-2);
+        % probably sets the invisible `MKSresponse` uicontrol?
         set(localhandles(12),'string',data1)
     end
 
@@ -2619,6 +2643,8 @@ build_hygrometer_window(window_visibility_default(6));
 
 
     function MKSchangeflow(source,eventdata,channel,value)
+    % MKSCHANGEFLOW  Change flow setpoint on `channel` to `value`.
+
         %figure out where the button push happened
         if(isnan(value))
             value = get(source,'string'); %get user-entered data
@@ -2627,7 +2653,8 @@ build_hygrometer_window(window_visibility_default(6));
         else
             formatted_value = sprintf('%.2E',value);
         end
-        MKSsend(source,eventdata,['QSP' num2str(channel) '!' formatted_value]);
+        qsp_command = ['QSP' num2str(channel) '!' formatted_value];
+        MKSsend(source,eventdata,qsp_command);
     end
 
     function p_circ = water_vapor_pressure(T)
