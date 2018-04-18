@@ -937,20 +937,19 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function fasttimerFcn(source,eventdata)
-        % Run the main loop of the program.
-        %
-        % Generally needs to be running for anything to happen, except for
-        % other callback functions triggered directly by button press.
-        %
-        % Set up as TimerFcn callback for fasttimer, which executes it
-        % with frequency set by timer's "Period" argument (e.g., 0.1 s).
-        % In turn, fasttimer_startstop() controls fasttimer as
-        % a callback for a "Start/Stop background timer" button press.
-        %
-        % (NB other functions, including fasttimerFcn, also stop/start
-        % fasttimer during time-consuming parts of their execution)
+    % FASTTIMERFCN  Run the main loop of the program.
+    %
+    %   Generally needs to be running for anything to happen, except for
+    %   other callback functions triggered directly by button press.
+    %
+    %   Set up as TimerFcn callback for fasttimer, which executes it
+    %   with frequency set by timer's "Period" argument (e.g., 0.1 s).
+    %   In turn, fasttimer_startstop() controls fasttimer as
+    %   a callback for a "Start/Stop background timer" button press.
+    %
+    %   (NB other functions, including fasttimerFcn, also stop/start
+    %   fasttimer during time-consuming parts of their execution)
 
-        
         fastloop = tic;
         temp = getappdata(main);
         
@@ -969,15 +968,16 @@ build_hygrometer_window(window_visibility_default(6));
         % `main`.
         savelogic = (mod(FrameNumber,100)==0);
         % datalogic controls whether the 'slow' part of the function runs.
-        % NB save to file can only happen if it's possible for datalogic
-        % to be TRUE when FrameNumber==0
+        % Save to file can only happen if it's possible for datalogic to be
+        % TRUE when FrameNumber==0
         datalogic = (mod(FrameNumber,50)==0);
 
-        %% check if any connected hardware needs to be started or stopped
+        %% update fringe and microscope cameras
         if(~isempty(ishandle(microscope_window_handle))&&~isempty(ishandle(fringe_window_handle)))
             [feedbackOK,fringe_compressed,fringe_image,microscope_image] = update_cameras(source,eventdata,temp,updatelogic,datalogic);
         end
         
+        %% end of 'fast update' portion
         fasttime = toc(fastloop);
         set(fastupdatetext,'string',['Fast update: ' num2str(fasttime) ' s']);
         setappdata(main,'FrameNumber',FrameNumber)
@@ -1178,19 +1178,18 @@ build_hygrometer_window(window_visibility_default(6));
         newX = X(1):nday:X(size(temp.fringe_compressed,1));
         newX_coordinates = interp1(X,1:size(X,2),newX);
         new_1Dfringe = temp.fringe_compressed(round(newX_coordinates),:);
-        
-        
-        
+
         dX = diff(newX_coordinates);
         %find identical data
         gaps = find(dX<0.999);
-        
+
         for i = 2:length(gaps)
             if(gaps(i)==(gaps(i-1)+1)) %if gaps are sequential
                 new_1Dfringe(gaps(i),:) = NaN;
             end
         end
-        
+
+        %convert new_1Dfringe to double to matlab work on it
         new_1Dfringe = double(new_1Dfringe);
         %allow for plotting if desired
         if(0)
@@ -1199,10 +1198,7 @@ build_hygrometer_window(window_visibility_default(6));
             set(im1,'cdatamapping','scaled')
             set(im1,'XData',[newX(1) newX(end)])
             set(ax1,'XLim',[newX(1) newX(end)])
-            
-            %convert new_1Dfringe to double to matlab work on it
-            
-            
+
             onedpcts = prctile(new_1Dfringe,[10 90]);
             lowerlimit = min(onedpcts(1,onedpcts(1,:)~=0));
             upperlimit = max(onedpcts(2,onedpcts(1,:)~=0));
@@ -1212,9 +1208,7 @@ build_hygrometer_window(window_visibility_default(6));
             xlabel('Time (DD HH)')
             datetick('x','DD HH')
         end
-        
-        
-        
+
         %preallocate for 30 peaks at most
         peakheights = zeros(size(new_1Dfringe,1),30);
         peaklocs = zeros(size(new_1Dfringe,1),30);
@@ -1222,7 +1216,8 @@ build_hygrometer_window(window_visibility_default(6));
         diffpeaklocs = [];
         h = waitbar(0,['Fringe peak analysis...']);
         for i = 1:size(new_1Dfringe,1)
-            [p,l] = findpeaks(smooth(new_1Dfringe(i,offset:end-offset)),'MinPeakDistance',10);
+            [p,l] = findpeaks(smooth(new_1Dfringe(i,offset:end-offset)),...
+                'MinPeakDistance',10);
             peakheights(i,1:length(p)) = p;
             peaklocs(i,1:length(l)) = l;
             % pause
@@ -1232,7 +1227,7 @@ build_hygrometer_window(window_visibility_default(6));
             end
         end
         close(h)
-        
+
         %find the average and std of difference in peak location, up to the
         %negative one that indicates it is not a peak
         diffpeaklocs = diff(peaklocs,1,2);
@@ -1240,7 +1235,7 @@ build_hygrometer_window(window_visibility_default(6));
             maxinx = find(diffpeaklocs(i,:)>0,1,'last');
             peaksep(i,:) = [mean(diffpeaklocs(i,1:maxinx)) std(diffpeaklocs(i,1:maxinx))];
         end
-        
+
         clear ax1 h i im1 l lowerlimit maxinx n nday p upperlimit diffpeaklocs
     end
         
@@ -1304,7 +1299,7 @@ build_hygrometer_window(window_visibility_default(6));
             set(localhandles(18),'String',serialinfo.AvailableSerialPorts);
             set(localhandles(17),'value',0,'string','Port Closed')
         end
-        
+
     end
 
     function Flush_data(source,eventdata)
@@ -1341,8 +1336,7 @@ build_hygrometer_window(window_visibility_default(6));
                 end
             end
         end
-        
-        
+
         start(fasttimer)
     end
 
@@ -1366,6 +1360,25 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function [feedbackOK,fringe_compressed,fringe_image,microscope_image] = update_cameras(source,eventdata,temp,updatelogic,datalogic)
+    % UPDATE_CAMERAS  Get raw and processed data from cameras if turned on.
+    %
+    %   In addition to returned values, updates ycentroid of "blob"
+    %   detected in microscope image.
+    %
+    %   Returns:
+    %   --------
+    %   feedbackOK : boolean
+    %   Whether DC feedback is ok. Handled by microscope_blob_annotation().
+    %
+    %   fringe_compressed : 1x480 uint8 array or empty
+    %   Horizontal fringes computed by fringe_annotation().
+    %
+    %   fringe_image : 480x640 uint8 array or empty
+    %   Full image from fringe camera (reduced from 960x1280).
+    %
+    %   microscope_image : 480x640 uint8 array or empty
+    %   Full image from microscope camera (reduced from 960x1280).
+
         feedbackOK = 0; %set a default value
         fringe_compressed = []; %set a default value
         fringe_image = [];
@@ -1374,8 +1387,9 @@ build_hygrometer_window(window_visibility_default(6));
         camera1running = isrunning(temp.microscope_video_handle);
         camera2running = isrunning(temp.fringe_video_handle);
         if(camera1running&&~camera2running)
+            % get image from microscope camera and resize to 480x640
             trigger(temp.microscope_video_handle);
-            IM1 = getdata(temp.microscope_video_handle,1,'uint8');    %get image from camera
+            IM1 = getdata(temp.microscope_video_handle,1,'uint8');
             IM1_small = imresize(IM1,[480 640]);
             [~,ycentroid,feedbackOK] = microscope_blob_annotation(IM1_small,updatelogic);
             % identify handle for hold button by tag
@@ -1405,7 +1419,8 @@ build_hygrometer_window(window_visibility_default(6));
             str = ['Time: ' datestr(now)];
             xtextloc = 225;
             ytextloc = 450;
-            text(localhandles(3).Children(1).Children(1),double(xtextloc),double(ytextloc),str,'color','white')
+            text(localhandles(3).Children(1).Children(1),...
+                double(xtextloc),double(ytextloc),str,'color','white')
             % do fringe annotation if turned on
             fringe_button_handle = findobj(fringe_window_handle,...
                 '-depth',1,'tag','fopt_checkbox');
@@ -1416,13 +1431,13 @@ build_hygrometer_window(window_visibility_default(6));
                 fringe_button_depressed = get(fringe_button_handle,'value');
                 if(fringe_button_depressed)
                     [fringe_compressed] = fringe_annotation(IM2_small);
-                    fringe_image = IM2_small;
+                    fringe_image = uint8(IM2_small);
                 end
             end
         elseif(camera1running&&camera2running&&updatelogic)
             trigger(temp.microscope_video_handle);
             trigger(temp.fringe_video_handle);
-            IM1 = getdata(temp.microscope_video_handle,1,'uint8');    %get image from camera
+            IM1 = getdata(temp.microscope_video_handle,1,'uint8');
             IM2 = getdata(temp.fringe_video_handle,1,'uint8');
             IM1_small = imresize(IM1,[480 640]);
             [~,ycentroid,feedbackOK] = microscope_blob_annotation(IM1_small,updatelogic);
@@ -1462,15 +1477,13 @@ build_hygrometer_window(window_visibility_default(6));
                 fringe_button_depressed = get(fringe_button_handle,'value');
                 if(fringe_button_depressed)
                     [fringe_compressed] = fringe_annotation(IM2_small);
-                    fringe_image = IM2_small;
+                    fringe_image = uint8(IM2_small);
                 end
             end
             microscope_image = uint8(IM1_small);
         end
-        
-        
+
         %get logical flag for camera1 status
-        
         if(~camera1running&&temp.camera1Flag)
             %start the camera feed
             start(temp.microscope_video_handle);
@@ -1478,9 +1491,8 @@ build_hygrometer_window(window_visibility_default(6));
             %stop the camera feed
             stop(temp.microscope_video_handle);
         end
-        
+
         %get logical flag for camera2 status
-        
         if(~camera2running&&temp.camera2Flag)
             %start the camera feed
             start(temp.fringe_video_handle);
@@ -1848,6 +1860,13 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function [imdata_compressed] = fringe_annotation(imdata)
+    % FRINGE_ANNOTATION  Calculate and plot horizontal fringes in imdata.
+    %
+    %   Returns:
+    %   --------
+    %   imdata_compressed : uint8 1D array
+    %   Array of mean intensity of each row in imdata, scaled to 200.
+
         imdata_compressed = mean(imdata,2);
         %compress data
         imdata_compressed = uint8(imdata_compressed./max(imdata_compressed)*200);
