@@ -985,9 +985,9 @@ build_hygrometer_window(window_visibility_default(6));
         %% remainder of fasttimerFcn only runs when `datalogic` true
         % reaching end of this code updates 'slow' timestamp
         if(datalogic)
-            stop(fasttimer)
-            if(exist('fringe_compressed','var')&&~isempty(fringe_compressed))
-                if(savelogic)
+            try % helpful for debugging runtime issues
+                stop(fasttimer)
+                if(exist('fringe_compressed','var')&&~isempty(fringe_compressed)&&savelogic)
                     % write fringe_compressed fringe pattern to `main`
                     if(~isa(temp.fringe_compressed,'uint8'))
                         temp.fringe_compressed = uint8(temp.fringe_compressed);
@@ -996,169 +996,177 @@ build_hygrometer_window(window_visibility_default(6));
                     temp.fringe_timestamp(end+1) = now;
                     setappdata(main,'fringe_compressed',temp.fringe_compressed);
                     setappdata(main,'fringe_timestamp',temp.fringe_timestamp);
-                    % write full fringe image to `main` every 20th time
+                    % write full images to `main` every 20th time (NB only
+                    % happens if fringe_compressed is being created!)
                     if(mod(size(temp.fringe_compressed,1),20)==1)
                         temp.image_timestamp(end+1) = now;
                         setappdata(main,'image_timestamp',temp.image_timestamp);
-                        if(~isa(temp.fringe_image,'uint8'))
-                            temp.fringe_image = uint8(temp.fringe_image);
-                        end
-                        temp.fringe_image(end+1,:,:) = uint8(fringe_image);
-                        setappdata(main,'fringe_image',temp.fringe_image);
-                        if(~isa(temp.microscope_image,'uint8'))
-                            temp.microscope_image = uint8(temp.microscope_image);
-                        end
-                        temp.microscope_image(end+1,:,:) = uint8(microscope_image);
-                        setappdata(main,'microscope_image',temp.microscope_image);
-                    end
-                end
-            end
-            if(isfield(temp,'MKS946_comm'))
-                update_MKS_values(source,eventdata,savelogic);
-            end
-            if(isfield(temp,'LaudaRS232'))
-                update_Lauda(savelogic);
-            end
-            if(isfield(temp,'JulaboRS232'))
-                update_Julabo(savelogic);
-            end
-            if(isfield(temp,'arduino_comm')&&savelogic)
-                update_arduino(source,eventdata);
-            end
-            if(isfield(temp,'Hygrometer_comms')&&datalogic)
-                update_hygrometer_data()
-                %if it has been hot for at least 10 minutes, send it back
-                %to regular mode
-                if(temp.hygrometer_data(find(temp.hygrometer_data(:,1)>(now-15/60/24),1,'first'),2)>90)
-                   force_hygrometer_normal() 
-                end
-            end
-            if(temp.AndorFlag)
-                update_Andor_values();
-                get_andor_data(source,eventdata);
-            end
-            if(feedbackOK)
-                plothandle = get_figure_handles(microscope_window_handle);
-                voltage_plothandle = plothandle(end-7).Children(2).Children(1);
-                microscopehandles = get_figure_handles(microscope_window_handle);
-                temp = getappdata(main);
-                if(~isempty(str2num(microscopehandles(end-20).String(1:end-3)))&microscopehandles(end-11).Value)
-                    temp.VoltageData(end+1,:) = [now str2num(microscopehandles(end-20).String(1:end-3))];
-                    setappdata(main,'VoltageData',temp.VoltageData)
-                else
-                    temp.voltage_data_nofeedback(end+1,:) = [now str2num(microscopehandles(end-20).String(1:end-3))];
-                    setappdata(main,'voltage_data_nofeedback',temp.voltage_data_nofeedback);
-                end
-                if(size(temp.VoltageData,1)>1&&strcmp(microscopehandles(end-7).SelectedTab.Title,'Voltage Plot'))
-                    cla(voltage_plothandle);
-                    voltage_plothandle.XLimMode = 'Auto';
-                    voltage_plothandle.XTickMode = 'Auto';
-                    voltage_plothandle.XTickLabelMode = 'Auto';
-                    plot(voltage_plothandle,temp.VoltageData(:,1),temp.VoltageData(:,2).*1000,'.');
-                    if(size(temp.voltage_data_nofeedback,1)>1)
-                       hold(voltage_plothandle,'on');
-                       plot(voltage_plothandle,temp.voltage_data_nofeedback(:,1),temp.voltage_data_nofeedback(:,2).*1000,'o')
-                    end
-                    ylabel(voltage_plothandle,'V DC (V)')
-                    datetick(voltage_plothandle,'x','(DD).HH','keepticks')
-                    xlabel(voltage_plothandle,'Time (DD).HH')
-                else
-                    cla(voltage_plothandle);
-                end
-                
 
-            end
-            
-            andor_localhandles = get_figure_handles(Andor_window_handle);
-            fringe_localhandles = get_figure_handles(fringe_window_handle);
-            set(fringe_localhandles(3).Children(3).Children(1),'ydir','normal');
-            update_andor_plot_1D(fringe_localhandles(3).Children(3).Children(1))
-            if(temp.AndorFlag&&andor_localhandles(11).Value==1)
-                %update Andor plot
-                update_andor_plot_1D(andor_localhandles(end));
-            elseif(temp.AndorFlag&&andor_localhandles(11).Value==2)
-                update_andor_plot_2D();
-            end
-            
-            if(temp.RampFlag)
-                dt = (now-temp.RampTime_init)*24;
-                localhandles = get_figure_handles(MKS_window_handle);
-                if(dt>temp.Ramp_data(end,1))
-                    %the ramp is over
-                    localhandles(5).Value = 0;
-                    set(localhandles(9),'enable','on')
-                    setappdata(main,'RampFlag',0)
-                    set(localhandles(5),'string','Ramp Trap')
-                else
-                    localhandles(4).String = ['Ramp: ' num2str(dt,'%2.1f') ' of ' num2str(temp.Ramp_data(end,1),'%2.1f') ' hrs'];
-                    flow1 = min([interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,2),dt,'linear') 200]);
-                    flow2 = min([interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,3),dt,'linear') 200]);
-                    T = interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,4),dt,'linear');
-                    JulaboT = interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,5),dt,'linear');
-                    %ensure flow controllers are turned on if flow ~= 0
-                    if(flow1>=4) %dry
-                        %make sure MFC is turned to SETPOINT
-                        MKSsend(source,eventdata,'QMD3!SETPOINT');
-                        MKSchangeflow(source,eventdata,3,flow1);
-                        localhandles(11).Children(2).String = flow1;
-                    elseif(flow1<4)
-                        %turn MFC to CLOSE
-                        MKSsend(source,eventdata,'QMD3!CLOSE');
-                        localhandles(11).Children(2).String = 'CLOSED';
+                        temp.fringe_image(end+1,:,:) = fringe_image;
+                        setappdata(main,'fringe_image',temp.fringe_image);
+
+                        % microscope_image will either be empty or image
+                        % array. To keep aligned with image_timestamp,
+                        % write zeros array to temp.microscope_image if
+                        % microscope_image is empty.
+                        if(isempty(microscope_image))
+                            % hardcode size to match update_cameras()
+                            new_micro_image = zeros([480 640],'uint8');
+                        else
+                            new_micro_image = microscope_image;
+                        end
+                        temp.microscope_image(end+1,:,:) = new_micro_image;
+                        setappdata(main,'microscope_image',...
+                            temp.microscope_image);
                     end
-                    if(flow2>=4) %humid
-                        %make sure MFC is turned to SETPOINT
-                        MKSsend(source,eventdata,'QMD4!SETPOINT');
-                        MKSchangeflow(source,eventdata,4,flow2);
-                        localhandles(10).Children(2).String = flow2;
-                    elseif(flow2<4)
-                        %turn MFC to CLOSE
-                        MKSsend(source,eventdata,'QMD4!CLOSE');
-                        localhandles(10).Children(2).String = 'CLOSED';
-                    end
-                    
-                    Lauda_send_T(source,eventdata,T);
+                end
+                if(isfield(temp,'MKS946_comm'))
+                    update_MKS_values(source,eventdata,savelogic);
+                end
+                if(isfield(temp,'LaudaRS232'))
                     update_Lauda(savelogic);
-                    Julabo_send_T(source,eventdata,JulaboT);
+                end
+                if(isfield(temp,'JulaboRS232'))
                     update_Julabo(savelogic);
                 end
+                if(isfield(temp,'arduino_comm')&&savelogic)
+                    update_arduino(source,eventdata);
+                end
+                if(isfield(temp,'Hygrometer_comms')&&datalogic)
+                    update_hygrometer_data()
+                    % if hot for >10 minutes, send back to regular mode
+                    if(temp.hygrometer_data(find(temp.hygrometer_data(:,1)>(now-15/60/24),1,'first'),2)>90)
+                       force_hygrometer_normal()
+                    end
+                end
+                if(temp.AndorFlag)
+                    update_Andor_values();
+                    get_andor_data(source,eventdata);
+                end
+                if(feedbackOK)
+                    plothandle = get_figure_handles(microscope_window_handle);
+                    voltage_plothandle = plothandle(end-7).Children(2).Children(1);
+                    microscopehandles = get_figure_handles(microscope_window_handle);
+                    temp = getappdata(main);
+                    if(~isempty(str2num(microscopehandles(end-20).String(1:end-3)))&microscopehandles(end-11).Value)
+                        temp.VoltageData(end+1,:) = [now str2num(microscopehandles(end-20).String(1:end-3))];
+                        setappdata(main,'VoltageData',temp.VoltageData)
+                    else
+                        temp.voltage_data_nofeedback(end+1,:) = [now str2num(microscopehandles(end-20).String(1:end-3))];
+                        setappdata(main,'voltage_data_nofeedback',temp.voltage_data_nofeedback);
+                    end
+                    if(size(temp.VoltageData,1)>1&&strcmp(microscopehandles(end-7).SelectedTab.Title,'Voltage Plot'))
+                        cla(voltage_plothandle);
+                        voltage_plothandle.XLimMode = 'Auto';
+                        voltage_plothandle.XTickMode = 'Auto';
+                        voltage_plothandle.XTickLabelMode = 'Auto';
+                        plot(voltage_plothandle,temp.VoltageData(:,1),temp.VoltageData(:,2).*1000,'.');
+                        if(size(temp.voltage_data_nofeedback,1)>1)
+                           hold(voltage_plothandle,'on');
+                           plot(voltage_plothandle,temp.voltage_data_nofeedback(:,1),temp.voltage_data_nofeedback(:,2).*1000,'o')
+                        end
+                        ylabel(voltage_plothandle,'V DC (V)')
+                        datetick(voltage_plothandle,'x','(DD).HH','keepticks')
+                        xlabel(voltage_plothandle,'Time (DD).HH')
+                    else
+                        cla(voltage_plothandle);
+                    end
+                end
+
+                andor_localhandles = get_figure_handles(Andor_window_handle);
+                flocalhandles = get_figure_handles(fringe_window_handle);
+                set(flocalhandles(3).Children(3).Children(1),'ydir','normal');
+                update_andor_plot_1D(flocalhandles(3).Children(3).Children(1))
+                if(temp.AndorFlag&&andor_localhandles(11).Value==1)
+                    update_andor_plot_1D(andor_localhandles(end));
+                elseif(temp.AndorFlag&&andor_localhandles(11).Value==2)
+                    update_andor_plot_2D();
+                end
+
+                if(temp.RampFlag)
+                    dt = (now-temp.RampTime_init)*24;
+                    localhandles = get_figure_handles(MKS_window_handle);
+                    if(dt>temp.Ramp_data(end,1))
+                        %the ramp is over
+                        localhandles(5).Value = 0;
+                        set(localhandles(9),'enable','on')
+                        setappdata(main,'RampFlag',0)
+                        set(localhandles(5),'string','Ramp Trap')
+                    else
+                        localhandles(4).String = ['Ramp: ' num2str(dt,'%2.1f') ' of ' num2str(temp.Ramp_data(end,1),'%2.1f') ' hrs'];
+                        flow1 = min([interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,2),dt,'linear') 200]);
+                        flow2 = min([interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,3),dt,'linear') 200]);
+                        T = interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,4),dt,'linear');
+                        JulaboT = interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,5),dt,'linear');
+                        %ensure flow controllers are turned on if flow ~= 0
+                        if(flow1>=4) %dry
+                            %make sure MFC is turned to SETPOINT
+                            MKSsend(source,eventdata,'QMD3!SETPOINT');
+                            MKSchangeflow(source,eventdata,3,flow1);
+                            localhandles(11).Children(2).String = flow1;
+                        elseif(flow1<4)
+                            %turn MFC to CLOSE
+                            MKSsend(source,eventdata,'QMD3!CLOSE');
+                            localhandles(11).Children(2).String = 'CLOSED';
+                        end
+                        if(flow2>=4) %humid
+                            %make sure MFC is turned to SETPOINT
+                            MKSsend(source,eventdata,'QMD4!SETPOINT');
+                            MKSchangeflow(source,eventdata,4,flow2);
+                            localhandles(10).Children(2).String = flow2;
+                        elseif(flow2<4)
+                            %turn MFC to CLOSE
+                            MKSsend(source,eventdata,'QMD4!CLOSE');
+                            localhandles(10).Children(2).String = 'CLOSED';
+                        end
+
+                        Lauda_send_T(source,eventdata,T);
+                        update_Lauda(savelogic);
+                        Julabo_send_T(source,eventdata,JulaboT);
+                        update_Julabo(savelogic);
+                    end
+                end
+
+                %update fringe data tab
+                if(size(temp.fringe_compressed,1)>1&...
+                        strcmp(flocalhandles(3).SelectedTab.Title,...
+                        'Fringe Data'))
+
+                    peaksep = ACBAR_realtime_fringe_analysis(temp);
+
+                    fdata_ax = flocalhandles(3).Children(2).Children(1);
+                    cla(fdata_ax);
+                    errorbar(fdata_ax,...
+                        temp.fringe_timestamp,peaksep(:,1),peaksep(:,2));
+                    fdata_ax.XLimMode = 'auto';
+                    fdata_ax.XTickMode = 'auto';
+                    datetick(fdata_ax,'x','DD.HH')
+                    xlabel(fdata_ax,'Time (DD.HH)')
+                    ylabel(fdata_ax,'Peak Separation (px)')
+
+                end
+
+                set(slowupdatetext,'string',['Slow: ' datestr(now)])
+
+                % save contents of `temp` to file every time datalogic is
+                % true and FrameNumber rolls over to 0 (independent of
+                % savelogic), using v7.3 .mat format.
+                if(save_checkbox.Value&FrameNumber==0)
+                    % define absolute save file path in acbar_data folder
+                    save_path = ['C:\Users\Huisman\Documents\acbar_data\' ...
+                        save_filename.String];
+                    save(save_path,'temp','-v7.3')
+                end
+                start(fasttimer)
+            catch ME
+                % in past, exception has been MATLAB:subsassigndimmismatch
+                % from appending new microscope_image with size mismatch
+                % compared to temp.microscope_image (due to camera being
+                % started/stopped)
+                disp(ME.identifier)
+                disp(getReport(ME,'extended'))
+                rethrow(ME)
             end
-            
-            %update fringe data tab
-            flocalhandles = get_figure_handles(fringe_window_handle);
-            if(size(temp.fringe_compressed,1)>1&...
-                    strcmp(flocalhandles(3).SelectedTab.Title,...
-                    'Fringe Data'))
-                
-                peaksep = ACBAR_realtime_fringe_analysis(temp);
-                
-                cla(flocalhandles(3).Children(2).Children(1));
-                
-                errorbar(flocalhandles(3).Children(2).Children(1),...
-                    temp.fringe_timestamp,peaksep(:,1),peaksep(:,2));
-                
-                flocalhandles(3).Children(2).Children(1).XLimMode = 'auto';
-                flocalhandles(3).Children(2).Children(1).XTickMode = 'auto';
-                
-                datetick(flocalhandles(3).Children(2).Children(1),...
-                    'x','DD.HH')
-                xlabel(flocalhandles(3).Children(2).Children(1),'Time (DD.HH)')
-                ylabel(flocalhandles(3).Children(2).Children(1),'Peak Separation (px)')
-                
-            end
-            
-            set(slowupdatetext,'string',['Slow: ' datestr(now)])
-            
-            % save contents of `temp` to file every time datalogic is true
-            % and FrameNumber rolls over to 0 (independent of savelogic),
-            % using v7.3 .mat format.
-            if(save_checkbox.Value&FrameNumber==0)
-                % define absolute save file path in acbar_data folder
-                save_path = ['C:\Users\Huisman\Documents\acbar_data\' ...
-                    save_filename.String];
-                save(save_path,'temp','-v7.3')
-            end
-            start(fasttimer)
         end
         
     end
