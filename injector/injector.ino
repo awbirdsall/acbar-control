@@ -46,7 +46,7 @@ int rawInjectButtonState = LOW;
 int debouncedInjectButtonState;
 int dacSetpoint;
 boolean dacRecvInProgress = false;
-byte transmitStatus;
+int dacAddr = 0x62; // default address
 
 void setup() {
   Serial.begin(9600);
@@ -59,7 +59,7 @@ void setup() {
   shutter1.attach(servo1PWM);
   shutter2.attach(servo2PWM);
   digitalWrite(injectTrigger, HIGH);
-  setupDac(0x62); // default address
+  setupDac(dacAddr);
 }
 
 void loop() {
@@ -125,14 +125,21 @@ void checkInjectButton() {
   rawInjectButtonState = reading;
 }
 
+byte checkDac(int dacAddr) {
+  // empty transmission to check whether dac is there.
+  // endTransmission() should return 0 if okay.
+  Wire.beginTransmission(dacAddr);
+  byte dacTransmitStatus = Wire.endTransmission();
+  return dacTransmitStatus;
+}
+
 void setupDac(int addr) {
   // first, check whether i2c device is attached
   // NB this will silently hang if I2C pins are
   // being pulled LOW from elsewhere in the circuit
   Wire.begin();
-  Wire.beginTransmission(addr);
-  transmitStatus = Wire.endTransmission();
-  if (transmitStatus == 0) {
+  byte dacTransmitStatus = checkDac(addr);
+  if (dacTransmitStatus == 0) {
     Serial.println("Connected to I2C device");
     dac.begin(addr);
     dac.setFastMode(); // set i2c communication to 400 kHz
@@ -142,7 +149,7 @@ void setupDac(int addr) {
   }
   else {
     Serial.print("Did not connect to I2C device. Status ");
-    Serial.println(transmitStatus);
+    Serial.println(dacTransmitStatus);
   }
 }
 
@@ -154,6 +161,8 @@ void readSerialInputByte() {
   // (any 8 bits) : transmit 8 lowest bits to DAC, if
   //                previous byte was first DAC byte
   // 'd' : print ACII string of 12-bit DAC setpoint
+  // 'e' : report DAC EEPROM value (used on DAC startup)
+  // 'f' : write current DAC setpoint to DAC EEPROM
   // 's' : single droplet injection
   // '1' : 20 droplet burst (0.1 sec, 200Hz)
   // '5' : 250 droplet burst (5 sec, 50Hz)
@@ -169,7 +178,7 @@ void readSerialInputByte() {
   byte input = Serial.read();
 
   if (dacRecvInProgress) {
-    if (transmitStatus == 0) {
+    if (checkDac(dacAddr) == 0) {
       // receive remaining 8 bits for dac and set
       dacSetpoint += input;
       // report what's going on
@@ -184,24 +193,50 @@ void readSerialInputByte() {
       dacRecvInProgress = false;
     }
     else {
+      // something weird went wrong to get here. abort
+      // change to dac setpoint and reset variable to 0.
+      dacSetpoint = 0;
+      dacRecvInProgress = false;
       Serial.println("Invalid command. No I2C connection.");
     }
   }
   else if (input & 0b10000000)  {
-    if (transmitStatus == 0) {
-    dacRecvInProgress = true;
-    // set high bits of dacSetpoint
-    dacSetpoint = (input & 0b00001111) * 256;
-    Serial.println("First 4 dac bits");
+    if (checkDac(dacAddr) == 0) {
+      dacRecvInProgress = true;
+      // set high bits of dacSetpoint
+      dacSetpoint = (input & 0b00001111) * 256;
+      Serial.println("First 4 dac bits");
     }
     else {
       Serial.println("Invalid command. No I2C connection.");
     }
   }
-  // d = check dc setpoint
   else if (input == 'd') {
-    if (transmitStatus == 0) {
-    Serial.println(dacSetpoint);
+    if (checkDac(dacAddr) == 0) {
+      // make sure Arduino variable is up-to-date
+      dacSetpoint = dac.readCurrentDacVal();
+      Serial.println(dacSetpoint);
+    }
+    else {
+      Serial.println("Invalid command. No I2C connection.");
+    }
+  }
+  else if (input == 'e') {
+    if (checkDac(dacAddr) == 0) {
+      int eepromVal = dac.readValFromEEPROM();
+      Serial.println(eepromVal);
+    }
+    else {
+      Serial.println("Invalid command. No I2C connection.");
+    }
+  }
+  else if (input == 'f') {
+    if (checkDac(dacAddr) == 0) {
+      dacSetpoint = dac.readCurrentDacVal();
+      // EEPROM write time 25-50 ms
+      // EEPROM endurance 1 million cycles
+      dac.setVoltageAndSave(dacSetpoint);
+      Serial.println(dacSetpoint);
     }
     else {
       Serial.println("Invalid command. No I2C connection.");
