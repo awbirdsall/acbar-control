@@ -1337,7 +1337,8 @@ build_hygrometer_window(window_visibility_default(6));
                 'FrameNumber';'UPSInumber';'ShamrockGrating';...
                 'ShamrockXCal';'MKS946_comm';'LaudaRS232';...
                 'DS345_AC';'arduino_comm';'JulaboRS232';...
-                'Hygrometer_comms';'voltage_dc_trap'};
+                'Hygrometer_comms';'voltage_dc_trap';'PID_oldvalue';...
+                'PID_timestamp';'PID_Iterm'};
             for i = 1:length(listofnames)
                 if(~ismember(listofnames{i},namestokeep))
                     eval(['setappdata(main,''' listofnames{i} ''',[])'])
@@ -1713,12 +1714,9 @@ build_hygrometer_window(window_visibility_default(6));
         if(get(source,'value')&&temp.voltage_dc_trap>=0)
             set(source,'string','Holding...')
             currenttime = clock;
+            % initialize global vars related to PID
             setappdata(main,'PID_timestamp',currenttime)
             setappdata(main,'PID_Iterm',0);
-            setappdata(main,'PID_DCclicktime',currenttime)
-            localhandles = get_figure_handles(microscope_window_handle);
-            setappdata(main,'PID_DCvolt',temp.voltage_dc_trap);
-            setappdata(main,'PID_ACfreq',str2num(localhandles(12).String(1:end-3)));
         elseif(get(source,'value')==0&&temp.voltage_dc_trap>=0)
             set(source,'string','Hold Position')
         else
@@ -1745,6 +1743,7 @@ build_hygrometer_window(window_visibility_default(6));
 
         temp = getappdata(main);
         localhandles = get_figure_handles(microscope_window_handle);
+        currenttime = clock;
 
         % Three PID tuning parameters. Roughly speaking,
         % (1) proportional gain kp decreases rise time, increases
@@ -1758,14 +1757,9 @@ build_hygrometer_window(window_visibility_default(6));
         kd = 1e-3;
         % tracking error
         error = (ycentroid-temp.IdealY);
-        % calculate elapsed time since last function call
-        currenttime = clock;
-        if(isempty(temp.PID_timestamp))
-            setappdata(main,'PID_timestamp',currenttime);
-            setappdata(main,'PID_Iterm',0);
-            return
-        end
-        dt = etime(currenttime,temp.PID_timestamp); % in seconds
+
+        %  elapsed time since last function call, in seconds
+        dt = etime(currenttime,temp.PID_timestamp);
         
         old_dc = temp.voltage_dc_trap;
         if(dt<20)
@@ -1775,28 +1769,27 @@ build_hygrometer_window(window_visibility_default(6));
             Dterm = (ycentroid-temp.PID_oldvalue)*kd/dt;
             new_dc = old_dc + Pterm + Iterm + Dterm;
         else
-            % don't change if elapsed time has been too long (probably to
-            % avoid improper calculation?)
-            new_dc = old_dc;%+error*kd;
+            % don't change if elapsed time has been too long
+            new_dc = old_dc;
             Iterm = temp.PID_Iterm; % leave integrated value unchanged
         end
-        
+
         % update DC setpoint
         set_dc(new_dc)
         
         % try to adapt AC frequency as DC changes
-        freqfactor = abs(sqrt(1/(new_dc/temp.PID_DCvolt)));
-        new_ac = freqfactor*temp.PID_ACfreq;
+        freqfactor = abs(sqrt(1/(new_dc/old_dc)));
+        % get current state of ac frequency (for now, in window string)
+        old_ac = str2double(localhandles(12).String(1:end-3));
+        new_ac = freqfactor*old_ac;
         % keep above 100 Hz and below 400 Hz
         new_ac = max([100 new_ac]);
         new_ac = min([500 new_ac]);
-        
         % override new AC frequency if voltage is less than 5 V (it is too
         % agressive in this region as it is based on relative change)
         if(abs(new_dc<=5))
-           new_ac = temp.PID_ACfreq;
+           new_ac = old_ac;
         end
-        
         % update AC window text and setpoint
         localhandles(12).String(1:end-3) = num2str(new_ac,'%07.3f');
         SRSfreq(new_ac)
