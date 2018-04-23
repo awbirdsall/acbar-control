@@ -973,9 +973,17 @@ build_hygrometer_window(window_visibility_default(6));
         datalogic = (mod(FrameNumber,50)==0);
 
         %% update fringe and microscope cameras
-        if(~isempty(ishandle(microscope_window_handle))&&~isempty(ishandle(fringe_window_handle)))
-            [feedbackOK,fringe_compressed,fringe_image,microscope_image] = update_cameras(source,eventdata,temp,updatelogic,datalogic);
+        try % helps with debugging
+            if(~isempty(ishandle(microscope_window_handle))&&~isempty(ishandle(fringe_window_handle)))
+                [feedbackOK,fringe_compressed,fringe_image,microscope_image] = update_cameras(source,eventdata,temp,updatelogic,datalogic);
+            end
+        catch ME
+            disp('Problem with update_cameras in fasttimerFcn')
+            disp(ME.identifier)
+            disp(getReport(ME,'extended'))
+            rethrow(ME)
         end
+        
         
         %% end of 'fast update' portion
         fasttime = toc(fastloop);
@@ -1721,55 +1729,79 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function microscope_feedback_hold(source,eventdata,ycentroid)
-        fbtic = tic;
-        kp = 0.000005; %set proportional constant
-        ki = 0.0000001; %set integral constant
-        kd = 0.0000001; %set differential constant
+    % MICROSCOPE_FEEDBACK_HOLD  Use PID control to adjust trap voltages.
+    %
+    %   Set DC voltage using PID algorithm with 3 hard-coded tuning
+    %   parameters. Also proportionally update the AC frequency (in an
+    %   attempt to prevent hitting the spring point?).
+    %
+    %   Parameter ycentroid is measured vertical pixel position.
+    %
+    %   Side effects include:
+    %   - set PID_timestamp, PID_Iterm, and PID_oldvalue appdata in main
+    %   - call set_dc()
+    %   - call SRSfreq()
+    %   - update AC frequency display window text
+
         temp = getappdata(main);
-        %calculate the general error term
+        localhandles = get_figure_handles(microscope_window_handle);
+
+        % Three PID tuning parameters. Roughly speaking,
+        % (1) proportional gain kp decreases rise time, increases
+        % overshoot, decreases steady-state error
+        % (2) integral gain ki decreases rise time, increases overshoot,
+        % increases settling time, decreases steady-state error
+        % (3) differential gain kd decreases overshoot, decreases settling
+        % time (but can also amplify noise)
+        kp = 5e-3;
+        ki = 1e-7;
+        kd = 1e-3;
+        % tracking error
         error = (ycentroid-temp.IdealY);
-        %calculate the time change
+        % calculate elapsed time since last function call
         currenttime = clock;
         if(isempty(temp.PID_timestamp))
             setappdata(main,'PID_timestamp',currenttime);
             setappdata(main,'PID_Iterm',0);
             return
         end
-        dt = etime(currenttime,temp.PID_timestamp);
-        localhandles = get_figure_handles(microscope_window_handle);
+        dt = etime(currenttime,temp.PID_timestamp); % in seconds
         
         old_dc = temp.voltage_dc_trap;
         if(dt<20)
-            %calculate the integrated error term
-            Iterm = error*ki*dt+temp.PID_Iterm; %update integral term
-            %calculate the derivative error term
+            % update DC based on PID calculation
+            Pterm = error*kp;
+            Iterm = error*ki*dt+temp.PID_Iterm;
             Dterm = (ycentroid-temp.PID_oldvalue)*kd/dt;
-            new_dc = old_dc+error*kp+Iterm+Dterm;
+            new_dc = old_dc + Pterm + Iterm + Dterm;
         else
+            % don't change if elapsed time has been too long (probably to
+            % avoid improper calculation?)
             new_dc = old_dc;%+error*kd;
-            Iterm = temp.PID_Iterm; %leave integrated value unchanged
+            Iterm = temp.PID_Iterm; % leave integrated value unchanged
         end
         
-        %update DC setpoint
+        % update DC setpoint
         set_dc(new_dc)
         
-        %try to adapt AC voltage as DC changes
+        % try to adapt AC frequency as DC changes
         freqfactor = abs(sqrt(1/(new_dc/temp.PID_DCvolt)));
-        newAC = freqfactor*temp.PID_ACfreq;
-        newAC = max([100 newAC]); %keep it above 100 Hz
-        newAC = min([500 newAC]); %and below 400 Hz
+        new_ac = freqfactor*temp.PID_ACfreq;
+        % keep above 100 Hz and below 400 Hz
+        new_ac = max([100 new_ac]);
+        new_ac = min([500 new_ac]);
         
-        %override new AC frequency if voltage is less than 5 V (it is too
-        %agressive in this region as it is based on relative change)
+        % override new AC frequency if voltage is less than 5 V (it is too
+        % agressive in this region as it is based on relative change)
         if(abs(new_dc<=5))
-           newAC = temp.PID_ACfreq; 
+           new_ac = temp.PID_ACfreq;
         end
         
-        %update AC window text and setpoint
-        localhandles(12).String(1:end-3) = num2str(newAC,'%07.3f');
-        SRSfreq(newAC)
+        % update AC window text and setpoint
+        localhandles(12).String(1:end-3) = num2str(new_ac,'%07.3f');
+        SRSfreq(new_ac)
         
-        fbtime = toc(fbtic);
+        % update globals used in next function call
         setappdata(main,'PID_timestamp',currenttime);
         setappdata(main,'PID_oldvalue',ycentroid);
         setappdata(main,'PID_Iterm',Iterm);
