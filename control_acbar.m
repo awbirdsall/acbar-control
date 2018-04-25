@@ -1707,22 +1707,32 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function mholdposition(source,eventdata)
+    % MHOLDPOSITION  Start or stop DC feedback, from button press.
+
         stop(fasttimer)
-        temp = getappdata(main) ;
-        % temp.voltage_dc_trap is -1 if Arduino comms haven't been
-        % initialized with connection to DAC.
-        if(get(source,'value')&&temp.voltage_dc_trap>=0)
+
+        % voltage_dc_trap is -1 if Arduino comms haven't been initialized
+        % with DAC connection.
+        if(getappdata(main,'voltage_dc_trap')<0)
+            % missing DC control, turn button back off
+            set(source,'string','DC cxn req''d')
+            set(source,'value',0)
+            start(fasttimer)
+            return
+        end
+
+        if(get(source,'value'))
+            % toggle on
             set(source,'string','Holding...')
             currenttime = clock;
             % initialize global vars related to PID
             setappdata(main,'PID_timestamp',currenttime)
             setappdata(main,'PID_Iterm',0);
-        elseif(get(source,'value')==0&&temp.voltage_dc_trap>=0)
-            set(source,'string','Hold Position')
         else
-            set(source,'string','Open Comm First')
-            set(source,'value',0)
+            % toggle off
+            set(source,'string','Hold Position')
         end
+
         start(fasttimer)
     end
 
@@ -1997,6 +2007,8 @@ build_hygrometer_window(window_visibility_default(6));
             for i = 21:26
                 set(microhandles(end-i),'enable','off')
             end
+            % return voltage_dc_trap to unitialized value of -1
+            setappdata(main,'voltage_dc_trap',-1);
         end
         
     end
