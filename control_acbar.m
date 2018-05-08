@@ -59,7 +59,7 @@ MKSscramcomms = uicontrol(main,'style','pushbutton',...
 
 flush_button = uicontrol(main,'style','pushbutton',...
     'position',[175 20 110 20],'string','Flush All Data',...
-    'callback',@Flush_data);
+    'callback',@flush_data);
 
 % build checkboxes to toggle window visibility
 uicontrol(main,'style','text','string','Window visibility',...
@@ -1310,13 +1310,18 @@ build_hygrometer_window(window_visibility_default(6));
 
     end
 
-    function Flush_data(source,eventdata)
+    function flush_data(source,eventdata)
+    % FLUSH_DATA  Clear data from program memory.
+    %
+    %   Before clearing data, first provide a confirmation dialog and then
+    %   save data to file a final time. Do not clear data from list of
+    %   `namestokeep`, which are used in an ongoing way for program
+    %   operation.
+
         stop(fasttimer)
         temp = getappdata(main);
         choice = questdlg('This will clear all data in program memory. Are you sure?', ...
             'Yes','No');
-        %TODO: save all data before clearing in case it hasn't been saved
-        %recently!
         if(strcmp(choice,'Yes'))
             if(save_checkbox.Value)
                 % define absolute save file path in acbar_data folder
@@ -1324,11 +1329,10 @@ build_hygrometer_window(window_visibility_default(6));
                     save_filename.String];
                 save(save_path,'temp','-v7.3')
             end
-            
-            %turn off save checkbox
+            % turn off save checkbox and reset filename
             set(save_checkbox,'value',0);
-            %reset filename
             set(save_filename,'string','Enter new file name');
+
             listofnames = fieldnames(temp);
             namestokeep = {'microscope_video_handle';
                 'microscope_source_data';'fringe_video_handle';...
@@ -1341,15 +1345,13 @@ build_hygrometer_window(window_visibility_default(6));
                 'PID_timestamp';'PID_Iterm'};
             for i = 1:length(listofnames)
                 if(~ismember(listofnames{i},namestokeep))
-                    eval(['setappdata(main,''' listofnames{i} ''',[])'])
+                    setappdata(main,listofnames{i},[])
                 end
             end
         end
 
         start(fasttimer)
     end
-
-
 
 %% functions that actually do stuff for all subprograms
     function localhandles = get_figure_handles(handlein)
