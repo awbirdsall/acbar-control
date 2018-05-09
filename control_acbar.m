@@ -123,7 +123,10 @@ setappdata(main,'fringe_image',[]);
 setappdata(main,'microscope_image',[]);
 setappdata(main,'hygrometer_data',[]);
 setappdata(main,'voltage_data_nofeedback',[]);
-setappdata(main,'voltage_dc_trap',-1); % DC trap voltage, -1 before initialized
+% set trap voltages and frequencies to -1 before initialization
+setappdata(main,'voltage_dc_trap',-1);
+setappdata(main,'amp_ac_trap',-1);
+setappdata(main,'freq_ac_trap',-1);
 
 % initialize *****_window_handle vars in control_acbar()'s scope.
 % the `build_*****_window` functions, as nested functions, then share the
@@ -286,7 +289,7 @@ build_hygrometer_window(window_visibility_default(6));
         SRS2openclose = uicontrol(microscope_window_handle,'style','togglebutton',...
             'String','Port Closed','Value',0,...
             'position',[775 220 100 20],...
-            'callback',@SRScommsAC,'tag','AC'); % TODO NEED TO FIX THIS CALLBACK?
+            'callback',@srscomms,'tag','AC');
         
         
         DClabel = uicontrol(microscope_window_handle,'style','text',...
@@ -1341,8 +1344,8 @@ build_hygrometer_window(window_visibility_default(6));
                 'FrameNumber';'UPSInumber';'ShamrockGrating';...
                 'ShamrockXCal';'MKS946_comm';'LaudaRS232';...
                 'DS345_AC';'arduino_comm';'JulaboRS232';...
-                'Hygrometer_comms';'voltage_dc_trap';'PID_oldvalue';...
-                'PID_timestamp';'PID_Iterm'};
+                'Hygrometer_comms';'voltage_dc_trap';'amp_ac_trap';...
+                'freq_ac_trap';'PID_oldvalue';'PID_timestamp';'PID_Iterm'};
             for i = 1:length(listofnames)
                 if(~ismember(listofnames{i},namestokeep))
                     setappdata(main,listofnames{i},[])
@@ -1750,7 +1753,7 @@ build_hygrometer_window(window_visibility_default(6));
     %   Side effects include:
     %   - set PID_timestamp, PID_Iterm, and PID_oldvalue appdata in main
     %   - call set_dc()
-    %   - call SRSfreq()
+    %   - call set_ac_freq()
     %   - update AC frequency display window text
 
         temp = getappdata(main);
@@ -1791,10 +1794,10 @@ build_hygrometer_window(window_visibility_default(6));
         
         % try to adapt AC frequency as DC changes
         freqfactor = abs(sqrt(1/(new_dc/old_dc)));
-        % get current state of ac frequency (for now, in window string)
-        old_ac = str2double(localhandles(12).String(1:end-3));
+        % get current state of ac frequency
+        old_ac = getappdata(main,'freq_ac_trap');
         new_ac = freqfactor*old_ac;
-        % keep above 100 Hz and below 400 Hz
+        % keep above 100 Hz and below 500 Hz
         new_ac = max([100 new_ac]);
         new_ac = min([500 new_ac]);
         % override new AC frequency if voltage is less than 5 V (it is too
@@ -1802,9 +1805,8 @@ build_hygrometer_window(window_visibility_default(6));
         if(abs(new_dc<=5))
            new_ac = old_ac;
         end
-        % update AC window text and setpoint
-        localhandles(12).String(1:end-3) = num2str(new_ac,'%07.3f');
-        SRSfreq(new_ac)
+        % update AC frequency
+        set_ac_freq(new_ac);
         
         % update globals used in next function call
         setappdata(main,'PID_timestamp',currenttime);
@@ -2009,7 +2011,7 @@ build_hygrometer_window(window_visibility_default(6));
             for i = 21:26
                 set(microhandles(end-i),'enable','off')
             end
-            % return voltage_dc_trap to unitialized value of -1
+            % return voltage_dc_trap to uninitialized value of -1
             setappdata(main,'voltage_dc_trap',-1);
         end
         
@@ -2124,81 +2126,119 @@ build_hygrometer_window(window_visibility_default(6));
     end
         
 %% functions that actually do stuff for the SRS function generator
-    function SRScommsAC(source,eventdata)
+    function srscomms(source,eventdata)
+    % SRSCOMMS  Open or close connection to SRS function generator.
         if(get(source,'value'))
             stop(fasttimer)
-            %get identity of port
-            localhandles = get_figure_handles(microscope_window_handle);
-            portstrings = get(localhandles(end-17),'string');
-            portID = portstrings{get(localhandles(end-17),'value')};
+
+            % get identity of port and set up device connection
+            microhandles = get_figure_handles(microscope_window_handle);
+            portstrings = get(microhandles(end-17),'string');
+            portID = portstrings{get(microhandles(end-17),'value')};
             DS345_AC = DS345Device(portID);
             setappdata(main,'DS345_AC',DS345_AC);
-            set(localhandles(end-17),'enable','off');
+            set(microhandles(end-17),'enable','off');
             set(source,'string','Port Open');
-            stat = DS345_AC.amplitude;
-            set(localhandles(end-36),'string',[stat(1:end-2) ' VP'])
-            stat = DS345_AC.frequency;
-            stat = num2str(str2num(stat),'%07.3f');
-            set(localhandles(end-28),'string',[stat ' Hz'])
-            %turn on all the buttons
+
+            % initialize AC amp and freq to SRS values
+            % amplitude is string terminating with 'VP'
+            existing_amp_str = DS345_AC.amplitude;
+            existing_amp = str2double(existing_amp_str(1:end-2));
+            set_ac_amp(existing_amp);
+            existing_freq = str2double(DS345_AC.frequency);
+            set_ac_freq(existing_freq);
+
+            % enable AC buttons
             for i = 29:34
-                set(localhandles(end-i),'enable','on')
+                set(microhandles(end-i),'enable','on')
             end
             for i = 37:38
-                set(localhandles(end-i),'enable','on')
+                set(microhandles(end-i),'enable','on')
             end
+
             start(fasttimer)
         else
-            %close the port
+            % close port and clean up application data
             temp = getappdata(main);
             temp.DS345_AC.delete;
-            %clean up application data
             rmappdata(main,'DS345_AC');
-            localhandles = get_figure_handles(microscope_window_handle);
-            set(localhandles(end-17),'enable','on');
+
+            % update display
+            microhandles = get_figure_handles(microscope_window_handle);
+            set(microhandles(end-17),'enable','on');
             set(source,'string','Port Closed');
             for i = 29:34
-                set(localhandles(end-i),'enable','off')
+                set(microhandles(end-i),'enable','off')
             end
             for i = 37:38
-                set(localhandles(end-i),'enable','off')
+                set(microhandles(end-i),'enable','off')
             end
+
+            % return state variablse to uninitialized values of -1
+            setappdata(main,'amp_ac_trap',-1);
+            setappdata(main,'freq_ac_trap',-1);
         end
+    end
+
+    function set_ac_freq(freq)
+    % SET_AC_FREQ  Update trap AC frequency setpoint.
+    %
+    %   Perform 3 tasks:
+    %   (1) Set AC frequency with the SRS function generator.
+    %   (2) Update display string, which is just for display.
+    %   (3) Update AC frequency setpoint state in 'main.freq_ac_trap'
+
+        % set actual frequency using SRS DS345 serial object
+        % note set_freq requires a string input
+        ds345 = getappdata(main,'DS345_AC');
+        ds345.set_freq(num2str(freq));
+
+        % display new setpoint in microscope window
+        microhandles = get_figure_handles(microscope_window_handle);
+        ac_freq_handle = microhandles(end-28);
+        ac_freq_handle.String = [num2str(freq,'%07.3f') ' Hz'];
+
+        % update freq_ac_trap
+        setappdata(main,'freq_ac_trap',freq);
+    end
+
+    function set_ac_amp(amp)
+    % SET_AC_AMP  Update trap AC amplitude (Vpp, pre-amplified) setpoint.
+    %
+    %   Perform 3 tasks:
+    %   (1) Set AC amplitude with the SRS function generator.
+    %   (2) Update display string, which is just for display.
+    %   (3) Update AC amplitude setpoint state in 'main.amp_ac_trap'
+
+        % set actual amplitude using SRS DS345 serial object
+        % note set_amp requires a string input
+        ds345 = getappdata(main,'DS345_AC');
+        ds345.set_amp(num2str(amp),'VP');
+
+        % display new setpoint in microscope window
+        microhandles = get_figure_handles(microscope_window_handle);
+        ac_amp_handle = microhandles(end-36);
+        ac_amp_handle.String = [num2str(amp,'%.2f') ' VP'];
+
+        % update amp_ac_trap
+        setappdata(main,'amp_ac_trap',amp);
     end
 
     function increment_ac_amp(source,eventdata,amp_increment)
     % INCREMENT_AC_AMP  Increment AC amplitude on button press.
 
-        temp = getappdata(main);
-        localhandles = get_figure_handles(microscope_window_handle);
-        ac_amp_handle = localhandles(end-36);
-
-        old_amp = str2num(ac_amp_handle.String(1:end-3));
-        new_amp = num2str(old_amp+amp_increment);
-        ac_amp_handle.String = [num2str(old_amp+amp_increment,'%.2f') ' VP'];
-        temp.DS345_AC.set_amp(new_amp,'VP')
-
+        old_amp = getappdata(main,'amp_ac_trap');
+        new_amp = old_amp+amp_increment;
+        set_ac_amp(new_amp);
     end
 
     function increment_ac_freq(source,eventdata,freq_increment)
     % INCREMENT_AC_FREQ  Increment AC frequency on button press.
 
-        temp = getappdata(main);
-        localhandles = get_figure_handles(microscope_window_handle);
-        ac_freq_handle = localhandles(end-28);
-
-        old_freq = str2num(ac_freq_handle.String(1:end-3));
-        new_freq = num2str(old_freq+freq_increment);
-        ac_freq_handle.String = [num2str(old_freq+freq_increment,'%07.3f') ' Hz'];
-        temp.DS345_AC.set_freq(new_freq)
-
+        old_freq = getappdata(main,'freq_ac_trap');
+        new_freq = old_freq+freq_increment;
+        set_ac_freq(new_freq);
     end
-
-    function SRSfreq(newAC)
-        temp = getappdata(main);
-        temp.DS345_AC.set_freq(num2str(newAC,'%.3f'));
-    end
-
 
 %% functions that actually do stuff for the MKS and Lauda board
 
