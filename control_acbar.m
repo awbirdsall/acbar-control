@@ -1029,6 +1029,21 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
+    function handle = find_ui_handle(tag, parent_handle)
+    % LOOKUP_UI_HANDLE  Find handle for UI element by tag and parent.
+    %
+    %   parent_handle needs to be direct parent (i.e., can't be nested more
+    %   deeply). Raise find_ui_handle:lookupFailure exception if not found.
+
+        handle = findobj(parent_handle,'-depth',1,'tag',tag);
+        if isempty(handle)
+            ME = MException('find_ui_handle:lookupFailure', ...
+                ['Did not find element with tag ', tag,...
+                ' in parent ' parent_handle]);
+            throw(ME);
+        end
+    end
+
 %% functions that actually do stuff for main program
     function fasttimer_startstop(source,eventdata)
         if(get(source,'value'))
@@ -1385,20 +1400,17 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function toggle_window_visibility(source,eventdata,tag_name)
-        % search only direct children of graphics root (i.e., the figure windows)
-        selected_window_handle = findobj(groot,'-depth',1,'tag',tag_name);
-        % warn if findobj didn't find anything
-        if isempty(selected_window_handle)
-            warning(['did not find window with tag ',tag_name])
-        else
-            % `get` evaluates as true if checkbox is checked
-            if(get(source,'value'))
-                set(selected_window_handle,'visible','on')
-            else
-                set(selected_window_handle,'visible','off')
-            end
-        end
+    % TOGGLE_WINDOW_VISIBILITY  Toggle visibility of window with tag_name.
+    %
+    %   Searches only direct children of graphics root, which should be
+    %   figure windows.
 
+        selected_window_handle = find_ui_handle(tag_name,groot);
+        if(get(source,'value'))
+            set(selected_window_handle,'visible','on')
+        else
+            set(selected_window_handle,'visible','off')
+        end
     end
 
     function SCRAM_COMMS(source,eventdata)
@@ -1501,13 +1513,14 @@ build_hygrometer_window(window_visibility_default(6));
     %   Horizontal fringes computed by fringe_annotation().
     %
     %   fringe_image : 480x640 uint8 array or empty
-    %   Full image from fringe camera (reduced from 960x1280).
+    %   Full image from fringe camera (reduced from 960x1280). Only
+    %   nonempty when fringe annotation is turned on.
     %
     %   microscope_image : 480x640 uint8 array or empty
     %   Full image from microscope camera (reduced from 960x1280).
 
-        feedbackOK = 0; %set a default value
-        fringe_compressed = []; %set a default value
+        feedbackOK = 0;
+        fringe_compressed = [];
         fringe_image = [];
         microscope_image = [];
         %get video data if running
@@ -1518,21 +1531,20 @@ build_hygrometer_window(window_visibility_default(6));
             trigger(temp.microscope_video_handle);
             IM1 = getdata(temp.microscope_video_handle,1,'uint8');
             IM1_small = imresize(IM1,[480 640]);
+            % look for droplet blob
             [~,ycentroid,feedbackOK] = microscope_blob_annotation(IM1_small,updatelogic);
-            % identify handle for hold button by tag
-            hold_button_handle = findobj(microscope_window_handle,...
-                '-depth',1,'tag','mhold_position');
-            % warn if findobj didn't find anything
-            if isempty(hold_button_handle)
-                warning('did not find window with tag mhold_position')
-            else
-                hold_button_depressed = get(hold_button_handle,'value');
-                if(hold_button_depressed&&feedbackOK&&datalogic)
-                    if(isfield(temp,'PID_oldvalue'))
-                        microscope_feedback_hold(source,eventdata,ycentroid);
-                    else
-                        setappdata(main,'PID_oldvalue',ycentroid);
-                    end
+            % check if microscope hold button is depressed
+            hold_button_handle = find_ui_handle('mhold_position',...
+                microscope_window_handle);
+            hold_button_depressed = get(hold_button_handle,'value');
+            % run microscope_feedback_hold, if appropriate
+            if(hold_button_depressed&&feedbackOK&&datalogic)
+                % need existing y-position of blob for feedback. Write for
+                % next time through loop if doesn't already exist.
+                if(isfield(temp,'PID_oldvalue'))
+                    microscope_feedback_hold(source,eventdata,ycentroid);
+                else
+                    setappdata(main,'PID_oldvalue',ycentroid);
                 end
             end
             microscope_image = uint8(IM1_small);
@@ -1549,43 +1561,41 @@ build_hygrometer_window(window_visibility_default(6));
             text(localhandles(3).Children(1).Children(1),...
                 double(xtextloc),double(ytextloc),str,'color','white')
             % do fringe annotation if turned on
-            fringe_button_handle = findobj(fringe_window_handle,...
-                '-depth',1,'tag','fopt_checkbox');
-            % warn if findobj didn't find anything
-            if isempty(fringe_button_handle)
-                warning('did not find window with tag fopt_checkbox')
-            else
-                fringe_button_depressed = get(fringe_button_handle,'value');
-                if(fringe_button_depressed)
-                    [fringe_compressed] = fringe_annotation(IM2_small);
-                    fringe_image = uint8(IM2_small);
-                end
+            fringe_button_handle = find_ui_handle('fopt_checkbox',...
+                fringe_window_handle);
+            fringe_button_depressed = get(fringe_button_handle,'value');
+            if(fringe_button_depressed)
+                [fringe_compressed] = fringe_annotation(IM2_small);
+                fringe_image = uint8(IM2_small);
             end
         elseif(camera1running&&camera2running&&updatelogic)
+            % get images from microscope and fringe cameras, resize each
+            % to 480x640
             trigger(temp.microscope_video_handle);
             trigger(temp.fringe_video_handle);
             IM1 = getdata(temp.microscope_video_handle,1,'uint8');
             IM2 = getdata(temp.fringe_video_handle,1,'uint8');
             IM1_small = imresize(IM1,[480 640]);
+            IM2_small = imresize(IM2,[480 640]);
+
+            % look for droplet blob
             [~,ycentroid,feedbackOK] = microscope_blob_annotation(IM1_small,updatelogic);
-            [mlocalhandles] = get_figure_handles(microscope_window_handle);
-            % identify handle for hold button by tag
-            hold_button_handle = findobj(microscope_window_handle,...
-                '-depth',1,'tag','mhold_position');
-            % warn if findobj didn't find anything
-            if isempty(hold_button_handle)
-                warning('did not find window with tag mhold_position')
-            else
-                hold_button_depressed = get(hold_button_handle,'value');
-                if(hold_button_depressed&&feedbackOK&&datalogic==1)
-                    if(isfield(temp,'PID_oldvalue'))
-                        microscope_feedback_hold(source,eventdata,ycentroid);
-                    else
-                        setappdata(main,'PID_oldvalue',ycentroid);
-                    end
+            % check if microscope hold button is depressed
+            hold_button_handle = find_ui_handle('mhold_position',...
+                microscope_window_handle);
+            hold_button_depressed = get(hold_button_handle,'value');
+            % run microscope_feedback_hold, if appropriate
+            if(hold_button_depressed&&feedbackOK&&datalogic)
+                % need existing y-position of blob for feedback. Write for
+                % next time through loop if doesn't already exist.
+                if(isfield(temp,'PID_oldvalue'))
+                    microscope_feedback_hold(source,eventdata,ycentroid);
+                else
+                    setappdata(main,'PID_oldvalue',ycentroid);
                 end
             end
-            IM2_small = imresize(IM2,[480 640]);
+            microscope_image = uint8(IM1_small);
+
             [flocalhandles] = get_figure_handles(fringe_window_handle);
             cla(flocalhandles(3).Children(1).Children(1))
             imshow(IM2_small,'parent',flocalhandles(3).Children(1).Children(1))
@@ -1595,19 +1605,13 @@ build_hygrometer_window(window_visibility_default(6));
             text(flocalhandles(3).Children(1).Children(1),...
                 double(xtextloc),double(ytextloc),str,'color','white')
             % do fringe annotation if turned on
-            fringe_button_handle = findobj(fringe_window_handle,...
-                '-depth',1,'tag','fopt_checkbox');
-            % warn if findobj didn't find anything
-            if isempty(fringe_button_handle)
-                warning('did not find window with tag fopt_checkbox')
-            else
-                fringe_button_depressed = get(fringe_button_handle,'value');
-                if(fringe_button_depressed)
-                    [fringe_compressed] = fringe_annotation(IM2_small);
-                    fringe_image = uint8(IM2_small);
-                end
+            fringe_button_handle = find_ui_handle('fopt_checkbox',...
+                fringe_window_handle);
+            fringe_button_depressed = get(fringe_button_handle,'value');
+            if(fringe_button_depressed)
+                [fringe_compressed] = fringe_annotation(IM2_small);
+                fringe_image = uint8(IM2_small);
             end
-            microscope_image = uint8(IM1_small);
         end
 
         %get logical flag for camera1 status
