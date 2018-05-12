@@ -1030,16 +1030,42 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function handle = find_ui_handle(tag, parent_handle)
-    % LOOKUP_UI_HANDLE  Find handle for UI element by tag and parent.
+    % FIND_UI_HANDLE  Find handle for UI element by tag and parent.
     %
     %   parent_handle needs to be direct parent (i.e., can't be nested more
     %   deeply). Raise find_ui_handle:lookupFailure exception if not found.
+    %
+    %   tag can be string or cell array of strings. If cell array, drills
+    %   down nested tags, with first element as highest level
+    %   (e.g., {'tag1','tag2','tag3'} returns element with tag 'tag3', whose
+    %   parent has tag 'tag2', whose parent has tag 'tag1', whose parent has
+    %   handle parent_handle.)
 
-        handle = findobj(parent_handle,'-depth',1,'tag',tag);
-        if isempty(handle)
-            ME = MException('find_ui_handle:lookupFailure', ...
-                ['Did not find element with tag ', tag,...
-                ' in parent ' parent_handle]);
+        if ischar(tag)
+            handle = findobj(parent_handle,'-depth',1,'tag',tag);
+            if isempty(handle)
+                ME = MException('find_ui_handle:lookupFailure', ...
+                    ['Did not find element with tag ', tag,...
+                    ' in parent ' parent_handle]);
+                throw(ME);
+            end
+        elseif iscellstr(tag)
+            % drill down through cell array of nested tag strings
+            nested_handle = parent_handle;
+            for nested_tag = tag
+                nested_handle = findobj(nested_handle,'-depth',1,'tag',nested_tag{:});
+                if isempty(nested_handle)
+                    ME = MException('find_ui_handle:lookupFailure', ...
+                        ['Did not find element with tag ', nested_tag,...
+                        ' in parent ' nested_handle]);
+                    throw(ME);
+                end
+            end
+            handle = nested_handle;
+        else
+            ME = MException('find_ui_handle:badTag', ...
+                ['input tag argument needs to be a string or a cell' ...
+                 'array of strings']);
             throw(ME);
         end
     end
