@@ -514,7 +514,7 @@ build_hygrometer_window(window_visibility_default(6));
         
               
         %create the axes for the fringe camera
-        ax2 = axes('parent',tg1t1);
+        ax2 = axes('parent',tg1t1,'tag','ax2');
         set(ax2,'xticklabel',[]);
         set(ax2,'xtick',[]);
         set(ax2,'yticklabel',[]);
@@ -527,11 +527,11 @@ build_hygrometer_window(window_visibility_default(6));
         set(ax2,'Unit','normalized','Position',[0 0 1 1])
        
         %create the axes for the fringe trend display
-        ax22 = axes('parent',tg1t2);
+        ax22 = axes('parent',tg1t2,'tag','ax22');
         set(ax22,'nextplot','replacechildren');
         set(ax22,'xlimmode','auto')
         
-        ax23 = axes('parent',tg1t3);
+        ax23 = axes('parent',tg1t3,'tag','ax23');
         set(ax23,'nextplot','replacechildren');
         set(ax23,'xlimmode','auto')
         
@@ -550,21 +550,26 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function fringe_auto_gain(source,eventdata)
-        localhandles = get_figure_handles(fringe_window_handle);
         temp = getappdata(main);
+        fgain_control_tags = {'fgain_slider','fgain_display',...
+            'fshutter_slider','fshutter_display'};
         if(source.Value)
-            localhandles(5).Enable = 'off';
-            localhandles(6).Enable = 'off';
-            localhandles(7).Enable = 'off';
-            localhandles(8).Enable = 'off';
+            % disable gain and shutter sliders and displays
+            for tag_name = fgain_control_tags
+                handle = find_ui_handle(tag_name{:},fringe_window_handle);
+                handle.Enable = 'off';
+            end
+            % turn on auto shutter and gain
             temp.fringe_source_data.ShutterMode = 'auto';
             temp.fringe_source_data.GainMode = 'auto';
             setappdata(main,'fringe_source_data',temp.fringe_source_data);
         else
-            localhandles(5).Enable = 'on';
-            localhandles(6).Enable = 'on';
-            localhandles(7).Enable = 'on';
-            localhandles(8).Enable = 'on';
+            % enable gain and shutter sliders and displays
+            for tag_name = fgain_control_tags
+                handle = find_ui_handle(tag_name{:},fringe_window_handle);
+                handle.Enable = 'on';
+            end
+            % turn off auto shutter and gain
             temp.fringe_source_data.ShutterMode = 'manual';
             temp.fringe_source_data.GainMode = 'manual';
             setappdata(main,'fringe_source_data',temp.fringe_source_data);
@@ -1238,10 +1243,13 @@ build_hygrometer_window(window_visibility_default(6));
                     end
                 end
 
+                % update Andor spectrum (plotted both Andor window and
+                % third tab of fringe window)
                 andor_localhandles = get_figure_handles(Andor_window_handle);
-                flocalhandles = get_figure_handles(fringe_window_handle);
-                set(flocalhandles(3).Children(3).Children(1),'ydir','normal');
-                update_andor_plot_1D(flocalhandles(3).Children(3).Children(1))
+                fringe_andor_plot = find_ui_handle({'tgroup1','tg1t3','ax23'},...
+                    fringe_window_handle);
+                set(fringe_andor_plot,'ydir','normal');
+                update_andor_plot_1D(fringe_andor_plot);
                 if(temp.AndorFlag&&andor_localhandles(11).Value==1)
                     update_andor_plot_1D(andor_localhandles(end));
                 elseif(temp.AndorFlag&&andor_localhandles(11).Value==2)
@@ -1292,14 +1300,15 @@ build_hygrometer_window(window_visibility_default(6));
                     end
                 end
 
-                %update fringe data tab
-                if(size(temp.fringe_compressed,1)>1&...
-                        strcmp(flocalhandles(3).SelectedTab.Title,...
-                        'Fringe Data'))
-
+                % update fringe data tab plot, if selected tab in tab group and
+                % fringe data exists
+                ftgroup = find_ui_handle('tgroup1',fringe_window_handle);
+                fdata_tab = find_ui_handle('tg1t2',ftgroup);
+                fdata_selected = (ftgroup.SelectedTab == fdata_tab);
+                if(size(temp.fringe_compressed,1)>1&fdata_selected)
                     peaksep = ACBAR_realtime_fringe_analysis(temp);
 
-                    fdata_ax = flocalhandles(3).Children(2).Children(1);
+                    fdata_ax = find_ui_handle('ax22',fdata_tab);
                     cla(fdata_ax);
                     errorbar(fdata_ax,...
                         temp.fringe_timestamp,peaksep(:,1),peaksep(:,2));
@@ -1308,7 +1317,6 @@ build_hygrometer_window(window_visibility_default(6));
                     datetick(fdata_ax,'x','DD.HH')
                     xlabel(fdata_ax,'Time (DD.HH)')
                     ylabel(fdata_ax,'Peak Separation (px)')
-
                 end
 
                 set(slowupdatetext,'string',['Slow: ' datestr(now)])
@@ -1575,17 +1583,20 @@ build_hygrometer_window(window_visibility_default(6));
             end
             microscope_image = uint8(IM1_small);
         elseif(camera2running&&updatelogic&&~camera1running)
+            % get image from fringe camera and resize to 480x640
             trigger(temp.fringe_video_handle);
             IM2 = getdata(temp.fringe_video_handle,1,'uint8');
             IM2_small = imresize(IM2,[480 640]);
-            [localhandles] = get_figure_handles(fringe_window_handle);
-            cla(localhandles(3).Children(1).Children(1))
-            imshow(IM2_small,'parent',localhandles(3).Children(1).Children(1))
+            % update Fringe Camera tab image in fringe window
+            fcamera_ax = find_ui_handle({'tgroup1','tg1t1','ax2'},...
+                fringe_window_handle);
+            cla(fcamera_ax)
+            imshow(IM2_small,'parent',fcamera_ax)
             str = ['Time: ' datestr(now)];
             xtextloc = 225;
             ytextloc = 450;
-            text(localhandles(3).Children(1).Children(1),...
-                double(xtextloc),double(ytextloc),str,'color','white')
+            text(fcamera_ax,double(xtextloc),double(ytextloc),str,...
+                'color','white')
             % do fringe annotation if turned on
             fringe_button_handle = find_ui_handle('fopt_checkbox',...
                 fringe_window_handle);
@@ -1622,14 +1633,16 @@ build_hygrometer_window(window_visibility_default(6));
             end
             microscope_image = uint8(IM1_small);
 
-            [flocalhandles] = get_figure_handles(fringe_window_handle);
-            cla(flocalhandles(3).Children(1).Children(1))
-            imshow(IM2_small,'parent',flocalhandles(3).Children(1).Children(1))
+            % update Fringe Camera tab image in fringe window
+            fcamera_ax = find_ui_handle({'tgroup1','tg1t1','ax2'},...
+                fringe_window_handle);
+            cla(fcamera_ax)
+            imshow(IM2_small,'parent',fcamera_ax)
             str = ['Time: ' datestr(now)];
             xtextloc = 225;
             ytextloc = 450;
-            text(flocalhandles(3).Children(1).Children(1),...
-                double(xtextloc),double(ytextloc),str,'color','white')
+            text(fcamera_ax,double(xtextloc),double(ytextloc),str,...
+                'color','white')
             % do fringe annotation if turned on
             fringe_button_handle = find_ui_handle('fopt_checkbox',...
                 fringe_window_handle);
@@ -1969,91 +1982,114 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function fringe_camera_arm(source,eventdata)
-        %state of button: 1 = on, 0 = off
-        temp = getappdata(main);
-        [localhandles] = get_figure_handles(fringe_window_handle);
+    % FRINGE_CAMERA_ARM  Toggle arm state of fringe camera.
+    %
+    %   Toggles camera2Flag global state and appropriate UI camera controls.
+
+        fgain_auto = find_ui_handle('fgain_auto',fringe_window_handle);
+        fstatus_display = find_ui_handle('fstatus_display',...
+            fringe_window_handle);
+        ffullscreen_button = find_ui_handle('ffullscreen_button',...
+            fringe_window_handle);
+        fgain_slider = find_ui_handle('fgain_slider',fringe_window_handle);
+        fshutter_slider = find_ui_handle('fshutter_slider',...
+            fringe_window_handle);
         if(get(source,'value'))
-            %turn camera flag on
+            % turn camera flag on
             setappdata(main,'camera2Flag',1)
-            localhandles(1).Enable = 'off';
-            set(localhandles(9),'string','Camera Armed');
-            set(localhandles(9),'backgroundcolor',[0.5 1 0.5]);
-            %make gain and shutter control invisible
-            set(localhandles(4),'visible','off')
-            set(localhandles(6),'visible','off')
-            set(localhandles(8),'visible','off')
-            set(localhandles(3).Children(1).Children(1),'xticklabel',[]);
-            set(localhandles(3).Children(1).Children(1),'xtick',[]);
-            set(localhandles(3).Children(1).Children(1),'yticklabel',[]);
-            set(localhandles(3).Children(1).Children(1),'ytick',[]);
-            %set the axes to not reset plot propertes
-            set(localhandles(3).Children(1).Children(1),'nextplot','add');
-            set(localhandles(3).Children(1).Children(1),'ydir','reverse');
-            set(localhandles(3).Children(1).Children(1),'xlim',[0 640],'ylim',[0 480])
+            % toggle ui controls
+            fgain_auto.Enable = 'off';
+            set(fstatus_display,'string','Camera Armed');
+            set(fstatus_display,'backgroundcolor',[0.5 1 0.5]);
+            set(ffullscreen_button,'visible','off')
+            set(fgain_slider,'visible','off')
+            set(fshutter_slider,'visible','off')
         else
-            %turn camera off
+            % turn camera flag off
             setappdata(main,'camera2Flag',0)
-            set(localhandles(9),'string','Camera Ready');
-            set(localhandles(9),'backgroundcolor',[1 0.5 0.5]);
-            %make gain and shutter controls visible
-            localhandles(1).Enable = 'on';
-            set(localhandles(4),'visible','on')
-            set(localhandles(6),'visible','on')
-            set(localhandles(8),'visible','on')
+            % toggle ui controls
+            set(fstatus_display,'string','Camera Ready');
+            set(fstatus_display,'backgroundcolor',[1 0.5 0.5]);
+            fgain_auto.Enable = 'on';
+            set(ffullscreen_button,'visible','on')
+            set(fgain_slider,'visible','on')
+            set(fshutter_slider,'visible','on')
         end
     end
 
     function change_fringe_gain(source,eventdata)
-        %get temporary data and pointers
+    % CHANGE_FRINGE_GAIN  Change fringe camera gain based on slider value.
+    %
+    %   Write value to camera, update display string, and update image.
+
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(fringe_window_handle);
-        newgain = get(localhandles(8),'value');%get the new gain value
-        %write value to camera
+        fgain_slider = find_ui_handle('fgain_slider',fringe_window_handle);
+        newgain = get(fgain_slider,'value');
+        % write value to camera
         temp.fringe_source_data.Gain = newgain;
-        %write value to indicator
-        set(localhandles(7),'string',[num2str(newgain,'%10.1f') ' dB'])
-        %write source data back to application data
+        % update display string
+        fgain_display = find_ui_handle('fgain_display',fringe_window_handle);
+        new_gain_str = [num2str(newgain,'%10.1f') ' dB'];
+        set(fgain_display,'string',new_gain_str);
+        % write source data back to application data
         setappdata(main,'fringe_source_data',temp.fringe_source_data);
-        %update image
+        % update image
         wait_a_second(fringe_window_handle);
         frame = getsnapshot(temp.fringe_video_handle);
         frame_small = imresize(frame,[480 640]);
         good_to_go(fringe_window_handle);
-        imshow(frame_small,'parent',localhandles(3).Children(1).Children(1));
+        fcamera_ax = find_ui_handle({'tgroup1','tg1t1','ax2'},...
+            fringe_window_handle);
+        imshow(frame_small,'parent',fcamera_ax);
     end
 
     function change_fringe_shutter(source,eventdata)
-        %get temporary data and pointers
+    % CHANGE_FRINGE_SHUTTER  Change fringe shutter speed based on slider value.
+    %
+    %   Write value to camera, update display string, and update image.
+
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(fringe_window_handle);
-        newshutter = get(localhandles(6),'value');%get the new gain value
-        %write value to camera
+        fshutter_slider = find_ui_handle('fshutter_slider',...
+            fringe_window_handle);
+        newshutter = get(fshutter_slider,'value');
+        % write value to camera
         temp.fringe_source_data.Shutter = newshutter;
-        %write value to indicator
-        set(localhandles(5),'string',[num2str(newshutter,'%10.3f') ' ms'])
-        %write source data back to application data
+        % update display string
+        fshutter_display = find_ui_handle('fshutter_display',...
+            fringe_window_handle);
+        new_shutter_str = [num2str(newshutter,'%10.3f') ' ms'];
+        set(fshutter_display,'string',new_shutter_str)
+        % write source data back to application data
         setappdata(main,'fringe_source_data',temp.fringe_source_data);
-        %update image
+        % update image
         wait_a_second(fringe_window_handle);
         frame = getsnapshot(temp.fringe_video_handle);
         frame_small = imresize(frame,[480 640]);
         good_to_go(fringe_window_handle);
-        imshow(frame_small,'parent',localhandles(3).Children(1).Children(1));
+        fcamera_ax = find_ui_handle({'tgroup1','tg1t1','ax2'},...
+            fringe_window_handle);
+        imshow(frame_small,'parent',fcamera_ax);
     end
 
     function [imdata_compressed] = fringe_annotation(imdata)
     % FRINGE_ANNOTATION  Calculate and plot horizontal fringes in imdata.
+    %
+    %   Analysis assumes fringes are perfectly horizontal.
     %
     %   Returns:
     %   --------
     %   imdata_compressed : uint8 1D array
     %   Array of mean intensity of each row in imdata, scaled to 200.
 
+        % take mean along each row
         imdata_compressed = mean(imdata,2);
-        %compress data
+        % rescale to 200
         imdata_compressed = uint8(imdata_compressed./max(imdata_compressed)*200);
-        [localhandles] = get_figure_handles(fringe_window_handle);
-        plot(localhandles(3).Children(1).Children(1),640-uint16(imdata_compressed(1:end)),1:(480),'r','linewidth',2);
+        % overlay trace on fringe camera image
+        fcamera_ax = find_ui_handle({'tgroup1','tg1t1','ax2'},...
+            fringe_window_handle);
+        plot(fcamera_ax,640-uint16(imdata_compressed(1:end)),1:(480),...
+            'r','linewidth',2);
     end
 
 %% functions that actually do stuff for arduino
