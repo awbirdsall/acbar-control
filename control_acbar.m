@@ -650,12 +650,18 @@ build_hygrometer_window(window_visibility_default(6));
             'HandleVisibility','off','enable','off',...
             'tag','ardiuno_r3');
         
-        ax20 = axes('parent',arduino_window_handle,'position',[0.15 0.35 0.8 0.25]);
+        % temperature plot (lower axis)
+        ax20 = axes('parent',arduino_window_handle,...
+            'position',[0.15 0.35 0.8 0.25],...
+            'tag','ax20');
         set(ax20,'nextplot','replacechildren');
         set(ax20,'xtickmode','auto')
         set(ax20,'xlimmode','auto')
         
-        ax21 = axes('parent',arduino_window_handle,'position',[0.15 0.7 0.8 0.25]);
+        % humidity plot (upper axis)
+        ax21 = axes('parent',arduino_window_handle,...
+            'position',[0.15 0.7 0.8 0.25],...
+            'tag','ax21');
         set(ax21,'nextplot','replacechildren');
         set(ax21,'xtickmode','auto')
         set(ax21,'xlimmode','auto')
@@ -1458,9 +1464,12 @@ build_hygrometer_window(window_visibility_default(6));
         set(localhandles(25),'String',serialinfo.AvailableSerialPorts);
         set(localhandles(24),'value',0,'string','Port Closed')
         if(ishandle(arduino_window_handle))
-            localhandles = get_figure_handles(arduino_window_handle);
-            set(localhandles(3),'String',serialinfo.AvailableSerialPorts);
-            set(localhandles(2),'value',0,'string','Port Closed')
+            arduino_selectbox = find_ui_handle('arduino_selectbox',...
+                arduino_window_handle);
+            set(arduino_selectbox,'String',serialinfo.AvailableSerialPorts);
+            arduino_openclose = find_ui_handle('arduino_openclose',...
+                arduino_window_handle);
+            set(arduino_openclose,'value',0,'string','Port Closed')
         end
         if(ishandle(MKS_window_handle))
             localhandles = get_figure_handles(MKS_window_handle);
@@ -2100,14 +2109,22 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function arduinocomms(source,eventdata)
-        % open or close connection to arduino
-        [localhandles] = get_figure_handles(arduino_window_handle);
+    % ARDUINOCOMMS  Open or close connection to arduino.
+
         temp = getappdata(main);
+        arduino_selectbox = find_ui_handle('arduino_selectbox',...
+            arduino_window_handle);
+        arduino_openclose = find_ui_handle('arduino_openclose',...
+            arduino_window_handle);
+        inject_pushbutton = find_ui_handle('inject_pushbutton',...
+            arduino_window_handle);
+        burst_pushbutton = find_ui_handle('burst_pushbutton',...
+            arduino_window_handle);
         if(get(source,'value')) % initiate connection
             %open the port and lock the selector
             %get identity of port
-            portstrings = get(localhandles(3),'string');
-            portID = portstrings{get(localhandles(3),'value')};
+            portstrings = get(arduino_selectbox,'string');
+            portID = portstrings{get(arduino_selectbox,'value')};
             
             % Find a serial port object.
             obj2 = instrfind('Type', 'serial', 'Port', portID, 'Tag', '');
@@ -2128,10 +2145,10 @@ build_hygrometer_window(window_visibility_default(6));
             % anything
             pause(2)
             % update and activate software controls
-            set(localhandles(3),'enable','off');
-            set(localhandles(2),'string','Port Open');
-            set(localhandles(5),'enable','on');
-            set(localhandles(6),'enable','on');
+            set(arduino_selectbox,'enable','off');
+            set(arduino_openclose,'string','Port Open');
+            set(inject_pushbutton,'enable','on');
+            set(burst_pushbutton,'enable','on');
             setappdata(main,'arduino_comm',obj2);
             
             % turn things on for DC control (Union used 2nd SRS DS345)
@@ -2179,10 +2196,10 @@ build_hygrometer_window(window_visibility_default(6));
                 fclose(temp.arduino_comm);
                 rmappdata(main,'arduino_comm');
             end
-            set(localhandles(3),'enable','on');
-            set(localhandles(2),'string','Port Closed');
-            set(localhandles(5),'enable','off');
-            set(localhandles(6),'enable','off');
+            set(arduino_selectbox,'enable','on');
+            set(arduino_openclose,'string','Port Closed');
+            set(inject_pushbutton,'enable','off');
+            set(burst_pushbutton,'enable','off');
             
             % turn things off for DC control
             microhandles = get_figure_handles(microscope_window_handle);
@@ -2197,23 +2214,39 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function update_arduino_display()
-        %update display
-        [localhandles] = get_figure_handles(arduino_window_handle);
+    % UPDATE_ARDUINO_DISPLAY  Update humidity and temperature plots.
+
         temp = getappdata(main);
+        rh_ax = find_ui_handle('ax21',arduino_window_handle);
+        temp_ax = find_ui_handle('ax20',arduino_window_handle);
+
+        % do not attempt to plot if there is only one data point
         if(~isfield(temp,'UPSIdata')||size(temp.UPSIdata,1)==1)
-            %do not attempt to plot if there is only one data point
             return
         end
-        plot(localhandles(end),temp.UPSIdata(:,1),temp.UPSIdata(:,1+(temp.UPSInumber-1)*2+1),'.');
+
+        % plot temperature data (lower axis)
+        plot(temp_ax,...
+            temp.UPSIdata(:,1),...
+            temp.UPSIdata(:,1+(temp.UPSInumber-1)*2+1),...
+            '.');
+
+        % format x axis ticks and labels (bottom of temperature plot)
         NumTicks = 6;
         L =[temp.UPSIdata(1,1) temp.UPSIdata(end,1)];
-        set(localhandles(end),'XTick',linspace(L(1),L(2),NumTicks))
-        if(diff(str2num(datestr(L,'DD')))>0) %if data spans more than one day
-            datetick(localhandles(end),'x','(DD).HH','keepticks')
-        else %only one day, show minutes
-            datetick(localhandles(end),'x','HH:MM','keepticks')
+        set(temp_ax,'XTick',linspace(L(1),L(2),NumTicks))
+        % Format DD.HH if multiple days of data, otherwise HH:MM
+        if(diff(str2num(datestr(L,'DD')))>0)
+            datetick(temp_ax,'x','(DD).HH','keepticks')
+        else
+            datetick(temp_ax,'x','HH:MM','keepticks')
         end
-        plot(localhandles(end-1),temp.UPSIdata(:,1),temp.UPSIdata(:,1+(temp.UPSInumber-1)*2+2),'.');
+
+        % plot humidity data (upper axis)
+        plot(rh_ax,...
+            temp.UPSIdata(:,1),...
+            temp.UPSIdata(:,1+(temp.UPSInumber-1)*2+2),...
+            '.');
     end
 
     function update_arduino(source,eventdata)
@@ -2233,21 +2266,31 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function inject(source,eventdata)
-        localhandles = get_figure_handles(arduino_window_handle);
+    % INJECT  Send inject command to Arduino and display timestamp.
+
         temp = getappdata(main);
+        % send command
         data2 = query(temp.arduino_comm,'s');
-        set(localhandles(4),'string',[datestr(now) ' ' data2])
+        % update display
+        inject_display = find_ui_handle('inject_display',...
+            arduino_window_handle);
+        set(inject_display,'string',[datestr(now) ' ' data2])
     end
 
     function burst(source,eventdata)
-        localhandles = get_figure_handles(arduino_window_handle);
+    % BURST  Send burst command of 20 drops to Arduino and display timestamp.
+
         temp = getappdata(main);
+        % send command
         data2 = query(temp.arduino_comm,'1');
+        % read remaining 19 lines returned from Arduino ("1","2",...,"19")
         for i = 1:19
             data2 = fgets(temp.arduino_comm);
         end
-        set(localhandles(4),'string',[datestr(now) ' Burst'])
-        
+        % update display
+        inject_display = find_ui_handle('inject_display',...
+            arduino_window_handle);
+        set(inject_display,'string',[datestr(now) ' Burst'])
     end
 
     function set_dc(dc_trap)
