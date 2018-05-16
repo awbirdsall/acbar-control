@@ -233,7 +233,7 @@ build_hygrometer_window(window_visibility_default(6));
             'tag','tg1t2');
         
         %create the axes for the microscope camera
-        ax1 = axes('parent',tg1t1);
+        ax1 = axes('parent',tg1t1,'tag','ax1');
         set(ax1,'xticklabel',[]);
         set(ax1,'xtick',[]);
         set(ax1,'yticklabel',[]);
@@ -245,7 +245,7 @@ build_hygrometer_window(window_visibility_default(6));
         set(ax1,'Unit','normalized','Position',[0 0 1 1])
         
         %create the axes for the voltage display
-        ax20 = axes('parent',tg1t2);
+        ax20 = axes('parent',tg1t2,'tag','ax20');
         set(ax20,'nextplot','replacechildren');
         set(ax20,'xlimmode','auto')
         
@@ -1220,33 +1220,47 @@ build_hygrometer_window(window_visibility_default(6));
                     update_Andor_values();
                     get_andor_data(source,eventdata);
                 end
+                % record and plot DC feedback voltage data
                 if(feedbackOK)
-                    plothandle = get_figure_handles(microscope_window_handle);
-                    voltage_plothandle = plothandle(end-7).Children(2).Children(1);
-                    microscopehandles = get_figure_handles(microscope_window_handle);
                     temp = getappdata(main);
-                    if(~isempty(str2num(microscopehandles(end-20).String(1:end-3)))&microscopehandles(end-11).Value)
-                        temp.VoltageData(end+1,:) = [now str2num(microscopehandles(end-20).String(1:end-3))];
+
+                    % write DC voltage data to array of feedback or no feedback
+                    % values
+                    voltage_dc_trap = getappdata(main,'voltage_dc_trap');
+                    mhold_position = find_ui_handle('mhold_position',...
+                        microscope_window_handle);
+                    if(voltage_dc_trap>=0&mhold_position.Value)
+                        temp.VoltageData(end+1,:) = [now voltage_dc_trap];
                         setappdata(main,'VoltageData',temp.VoltageData)
                     else
-                        temp.voltage_data_nofeedback(end+1,:) = [now str2num(microscopehandles(end-20).String(1:end-3))];
-                        setappdata(main,'voltage_data_nofeedback',temp.voltage_data_nofeedback);
+                        temp.voltage_data_nofeedback(end+1,:) = [now voltage_dc_trap];
+                        setappdata(main,'voltage_data_nofeedback',...
+                            temp.voltage_data_nofeedback);
                     end
-                    if(size(temp.VoltageData,1)>1&&strcmp(microscopehandles(end-7).SelectedTab.Title,'Voltage Plot'))
-                        cla(voltage_plothandle);
-                        voltage_plothandle.XLimMode = 'Auto';
-                        voltage_plothandle.XTickMode = 'Auto';
-                        voltage_plothandle.XTickLabelMode = 'Auto';
-                        plot(voltage_plothandle,temp.VoltageData(:,1),temp.VoltageData(:,2).*1000,'.');
+
+                    % plot DC voltage data if feedback voltage data exists,
+                    % with different markers for feedback and nofeedback
+                    tgroup1 = find_ui_handle('tgroup1',...
+                        microscope_window_handle);
+                    vplot_tab = find_ui_handle('tg1t2',tgroup1);
+                    vplot_selected = (tgroup1.SelectedTab == vplot_tab);
+                    vplot_ax = find_ui_handle('ax20',vplot_tab);
+                    if(size(temp.VoltageData,1)>1&&vplot_selected)
+                        cla(vplot_ax);
+                        vplot_ax.XLimMode = 'Auto';
+                        vplot_ax.XTickMode = 'Auto';
+                        vplot_ax.XTickLabelMode = 'Auto';
+                        plot(vplot_ax,temp.VoltageData(:,1),...
+                            temp.VoltageData(:,2).*1000,'.');
                         if(size(temp.voltage_data_nofeedback,1)>1)
-                           hold(voltage_plothandle,'on');
-                           plot(voltage_plothandle,temp.voltage_data_nofeedback(:,1),temp.voltage_data_nofeedback(:,2).*1000,'o')
+                           hold(vplot_ax,'on');
+                           plot(vplot_ax,temp.voltage_data_nofeedback(:,1),temp.voltage_data_nofeedback(:,2).*1000,'o')
                         end
-                        ylabel(voltage_plothandle,'V DC (V)')
-                        datetick(voltage_plothandle,'x','(DD).HH','keepticks')
-                        xlabel(voltage_plothandle,'Time (DD).HH')
+                        ylabel(vplot_ax,'V DC (V)')
+                        datetick(vplot_ax,'x','(DD).HH','keepticks')
+                        xlabel(vplot_ax,'Time (DD).HH')
                     else
-                        cla(voltage_plothandle);
+                        cla(vplot_ax);
                     end
                 end
 
@@ -1455,15 +1469,26 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function SCRAM_COMMS(source,eventdata)
-        %delete all COMs
+    % SCRAM_COMMS  Delete all serial connections and refresh connection list.
+
         delete(instrfindall)
-        %repoll and refresh list of COMs
         serialinfo = instrhwinfo('serial');
-        localhandles = get_figure_handles(microscope_window_handle);
-        set(localhandles(22),'String',serialinfo.AvailableSerialPorts);
-        set(localhandles(21),'value',0,'string','Port Closed')
-        set(localhandles(25),'String',serialinfo.AvailableSerialPorts);
-        set(localhandles(24),'value',0,'string','Port Closed')
+
+        % refresh in microscope window
+        srs1openclose = find_ui_handle('SRS1openclose',...
+            microscope_window_handle);
+        srs2openclose = find_ui_handle('SRS2openclose',...
+            microscope_window_handle);
+        srs1selectbox = find_ui_handle('SRS1selectbox',...
+            microscope_window_handle);
+        srs2selectbox = find_ui_handle('SRS2selectbox',...
+            microscope_window_handle);
+        set(srs1selectbox,'String',serialinfo.AvailableSerialPorts);
+        set(srs1openclose,'value',0,'string','Port Closed')
+        set(srs2selectbox,'String',serialinfo.AvailableSerialPorts);
+        set(srs2openclose,'value',0,'string','Port Closed')
+
+        % refresh in arduino window
         if(ishandle(arduino_window_handle))
             arduino_selectbox = find_ui_handle('arduino_selectbox',...
                 arduino_window_handle);
@@ -1472,6 +1497,8 @@ build_hygrometer_window(window_visibility_default(6));
                 arduino_window_handle);
             set(arduino_openclose,'value',0,'string','Port Closed')
         end
+
+        % refresh in MKS window
         if(ishandle(MKS_window_handle))
             localhandles = get_figure_handles(MKS_window_handle);
             set(localhandles(20),'String',serialinfo.AvailableSerialPorts);
@@ -1479,7 +1506,6 @@ build_hygrometer_window(window_visibility_default(6));
             set(localhandles(18),'String',serialinfo.AvailableSerialPorts);
             set(localhandles(17),'value',0,'string','Port Closed')
         end
-
     end
 
     function flush_data(source,eventdata)
@@ -1570,6 +1596,11 @@ build_hygrometer_window(window_visibility_default(6));
         %get video data if running
         camera1running = isrunning(temp.microscope_video_handle);
         camera2running = isrunning(temp.fringe_video_handle);
+        % logic based on which cameras are running
+        % NB each option only happens once every `updatelogic` loops *except*
+        % for the first case, where only the microscope camera is running. This
+        % has the effect of making the 'fast update' time slower in this case,
+        % since the microscope camera is updating more often.
         if(camera1running&&~camera2running)
             % get image from microscope camera and resize to 480x640
             trigger(temp.microscope_video_handle);
@@ -1690,21 +1721,26 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function microscope_auto_gain(source,eventdata)
-        localhandles = get_figure_handles(microscope_window_handle);
         temp = getappdata(main);
+        mgain_control_tags = {'mgain_slider','mgain_display',...
+            'mshutter_slider','mshutter_display'};
         if(source.Value)
-            localhandles(end-2).Enable = 'off';
-            localhandles(end-3).Enable = 'off';
-            localhandles(end-4).Enable = 'off';
-            localhandles(end-5).Enable = 'off';
+            % disable gain and shutter sliders and displays
+            for tag_name = mgain_control_tags
+                handle = find_ui_handle(tag_name{:},microscope_window_handle);
+                handle.Enable = 'off';
+            end
+            % turn on auto shutter and gain
             temp.microscope_source_data.ShutterMode = 'auto';
             temp.microscope_source_data.GainMode = 'auto';
             setappdata(main,'microscope_source_data',temp.microscope_source_data);
         else
-            localhandles(end-2).Enable = 'on';
-            localhandles(end-3).Enable = 'on';
-            localhandles(end-4).Enable = 'on';
-            localhandles(end-5).Enable = 'on';
+            % enable gain and shutter sliders and displays
+            for tag_name = mgain_control_tags
+                handle = find_ui_handle(tag_name{:},microscope_window_handle);
+                handle.Enable = 'on';
+            end
+            % turn off auto shutter and gain
             temp.microscope_source_data.ShutterMode = 'manual';
             temp.microscope_source_data.GainMode = 'manual';
             setappdata(main,'microscope_source_data',temp.microscope_source_data);
@@ -1712,106 +1748,164 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function microscope_camera_arm(source,eventdata)
-        %state of button: 1 = on, 0 = off
+    % MICROSCOPE_CAMERA_ARM  Toggle arm state of fringe camera.
+    %
+    %   Toggles camera1Flag global state and appropriate UI camera controls.
+
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(microscope_window_handle);
+        mgain_auto = find_ui_handle('mgain_auto',microscope_window_handle);
+        mstatus_display = find_ui_handle('mstatus_display',...
+            microscope_window_handle);
+        mfullscreen_button = find_ui_handle('mfullscreen_button',...
+            microscope_window_handle);
+        mgain_slider = find_ui_handle('mgain_slider',microscope_window_handle);
+        mshutter_slider = find_ui_handle('mshutter_slider',...
+            microscope_window_handle);
+        midealy_get = find_ui_handle('midealy_get',microscope_window_handle);
+        mhold_position = find_ui_handle('mhold_position',...
+            microscope_window_handle);
+
         if(get(source,'value'))
-            %turn camera on
+            % turn camera flag on
             setappdata(main,'camera1Flag',1)
-            set(localhandles(end-1),'string','Camera Armed');
-            set(localhandles(end-1),'backgroundcolor',[0.5 1 0.5]);
-            %make gain and shutter control invisible
-            set(localhandles(end-4),'visible','off')
-            set(localhandles(end-2),'visible','off')
-            set(localhandles(end-10),'enable','on')
-            set(localhandles(end-6),'visible','off')
+            % toggle ui controls
+            mgain_auto.Enable = 'off';
+            set(mstatus_display,'string','Camera Armed');
+            set(mstatus_display,'backgroundcolor',[0.5 1 0.5]);
+            set(mfullscreen_button,'visible','off')
+            set(mgain_slider,'visible','off')
+            set(mshutter_slider,'visible','off')
+            set(midealy_get,'enable','on')
         else
-            %turn camera off
+            % turn camera flag off
             setappdata(main,'camera1Flag',0)
-            set(localhandles(end-1),'string','Camera Ready');
-            set(localhandles(end-1),'backgroundcolor',[1 0.5 0.5]);
-            %make gain and shutter controls visible
-            set(localhandles(end-4),'visible','on')
-            set(localhandles(end-2),'visible','on')
-            set(localhandles(end-10),'enable','off')
-            set(localhandles(end-6),'visible','on')
-            %stop the camera from holding if it is currently holding
-            if(get(localhandles(end-11),'value'))
-                set(localhandles(end-11),'string','Stopped Holding')
-                set(localhandles(end-11),'value',0)
+            % toggle ui controls
+            set(mstatus_display,'string','Camera Ready');
+            set(mstatus_display,'backgroundcolor',[1 0.5 0.5]);
+            mgain_auto.Enable = 'on';
+            set(mfullscreen_button,'visible','on')
+            set(mgain_slider,'visible','on')
+            set(mshutter_slider,'visible','on')
+            set(midealy_get,'enable','off')
+            % stop holding
+            if(get(mhold_position,'value'))
+                set(mhold_position,'string','Stopped Holding')
+                set(mhold_position,'value',0)
             end
         end
     end
 
     function change_microscope_gain(source,eventdata)
-        %get temporary data and pointers
+    % CHANGE_MICROSCOPE_GAIN  Change microscope camera gain based on slider.
+    %
+    %   Write value to camera, update display string, and update image.
+
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(microscope_window_handle);
-        newgain = source.Value;
-        %write value to camera
-        temp.microscope_source_data.Gain = newgain;
-        %write value to indicator
-        set(localhandles(end-3),'string',[num2str(newgain,'%10.1f') ' dB'])
-        %write source data back to application data
+        new_gain = source.Value;
+        % write value to camera
+        temp.microscope_source_data.Gain = new_gain;
+        % update display string
+        mgain_display = find_ui_handle('mgain_display',...
+            microscope_window_handle);
+        new_gain_str = [num2str(new_gain,'%10.1f') ' dB'];
+        set(mgain_display,'string',new_gain_str)
+        % write source data back to application data
         setappdata(main,'microscope_source_data',temp.microscope_source_data);
+        % update image
         wait_a_second(microscope_window_handle);
-        %update image
         frame = getsnapshot(temp.microscope_video_handle);
         frame_small = imresize(frame,[480 640]);
         good_to_go(microscope_window_handle);
-        imshow(frame_small,'parent',localhandles(end-7).Children(1).Children(1))
+        mcamera_ax = find_ui_handle({'tgroup1','tg1t1','ax1'},...
+            microscope_window_handle);
+        imshow(frame_small,'parent',mcamera_ax);
     end
 
     function change_microscope_shutter(source,eventdata)
-        %get temporary data and pointers
+    % CHANGE_MICROSCOPE_SHUTTER  Change microscope shutter speed from slider.
+    %
+    %   Write value to camera, update display string, and update image.
+
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(microscope_window_handle);
         newshutter = source.Value;
-        %write value to camera
+        % write value to camera
         temp.microscope_source_data.Shutter = newshutter;
-        %write value to indicator
-        set(localhandles(end-5),'string',[num2str(newshutter,'%10.1f') ' ms'])
-        %write source data back to application data
+        % update display string
+        mshutter_display = find_ui_handle('mshutter_display',...
+            microscope_window_handle);
+        new_shutter_str = [num2str(newshutter,'%10.1f') ' ms'];
+        set(mshutter_display,'string',new_shutter_str)
+        % write source data back to application data
         setappdata(main,'microscope_source_data',temp.microscope_source_data);
+        % update image
         wait_a_second(microscope_window_handle);
-        %update image
         frame = getsnapshot(temp.microscope_video_handle);
         frame_small = imresize(frame,[480 640]);
         good_to_go(microscope_window_handle);
-        imshow(frame_small,'parent',localhandles(end-7).Children(1).Children(1))
+        mcamera_ax = find_ui_handle({'tgroup1','tg1t1','ax1'},...
+            microscope_window_handle);
+        imshow(frame_small,'parent',mcamera_ax);
     end
 
     function getidealy(source,eventdata)
+    % GETIDEALY  Set ideal y-axis position of droplet to current y-centroid.
+
         stop(fasttimer)
+
         pause(0.25)
         temp = getappdata(main);
-        [localhandles] = get_figure_handles(microscope_window_handle);
+        % collect new image
         trigger(temp.microscope_video_handle);
         IM1 = getdata(temp.microscope_video_handle);
         IM1_small = imresize(IM1,[480 640]);
+        % find current droplet y-axis position (centroid)
         [~,idealy] = microscope_blob_annotation(IM1_small,0);
-        set(localhandles(4+6+20+1),'string',num2str(idealy));
+        % update display and main.IdealY value
+        midealy = find_ui_handle('midealy',microscope_window_handle);
+        set(midealy,'string',num2str(idealy));
         setappdata(main,'IdealY',idealy);
+
         start(fasttimer)
     end
 
     function [x_centroid,y_centroid,feedbackOK] = microscope_blob_annotation(imdata,plotflag)
-        blobtic = tic;
-        %attempt fitting
+    % MICROSCOPE_BLOB_ANNOTATION  Locate droplet blob location and maybe plot.
+    %
+    %   imdata is image from microscope camera.
+    %
+    %   If plotflag is 1, redraw microscope image along with any bounding boxes
+    %   of detected blobs (red) and a box surrounding the overall centroid
+    %   (green).
+    %
+    %   x_centroid and y_centroid are overall centroid of one or two largest
+    %   detected blobs.
+    %
+    %   feedbackOK is 1 or 0 depending on whether any blobs were detected or
+    %   not (i.e., can't do DC feedback if camera doesn't see blob).
+
         feedbackOK = 1;
+        mcamera_ax = find_ui_handle({'tgroup1','tg1t1','ax1'},...
+            microscope_window_handle);
+
+        % calculate Area, Centroid, and BoundingBox of each detected region in
+        % binarized (i.e., black or white) version of imdata; sort by area
         stats = regionprops(im2bw(imdata,0.3));
         sortedstats = sort([stats.Area]);
-        [localhandles] = get_figure_handles(microscope_window_handle);
+
+        % logic based on number of detected regions, including define index of
+        % box(es) of interest
         if(length(sortedstats)==1)
-            %if only one region
             box_ind = find([stats.Area]==sortedstats(end));
+        % if no blobs detected, turn off dc feedback, redraw microscope
+        % image (with no annotation squares), and return [-999 -999 0].
         elseif(isempty(sortedstats))
             x_centroid = -999;
             y_centroid = -999;
             feedbackOK = 0;
-            % stop dc feedback hold if no blob detected
-            if(get(localhandles(end-11),'value'))
-                set(localhandles(end-11),'string','Stopped Holding')
+            mhold_position = find_ui_handle('mhold_position',...
+                microscope_window_handle);
+            if(get(mhold_position,'value'))
+                set(mhold_position,'string','Stopped Holding')
                 % stop the ramp, if feedback was active. note it should be
                 % possible to run a ramp with no feedback, but turning
                 % feedback on and having it turn itself off will stop ramp.
@@ -1833,48 +1927,55 @@ build_hygrometer_window(window_visibility_default(6));
                     data(2:end,1) = data(2:end,1)-now_data_time;
                     MKShandles(9).Data = data;
                 end
-                
             end
-            set(localhandles(end-11),'value',0)
+            set(mhold_position,'value',0)
             if(plotflag)
-                set(microscope_window_handle,'CurrentAxes',localhandles(end-7).Children(1).Children(1));
-                cla(localhandles(end-7).Children(1).Children(1))
-                imshow(imdata,'parent',localhandles(end-7).Children(1).Children(1))
+                set(microscope_window_handle,'CurrentAxes',mcamera_ax);
+                cla(mcamera_ax)
+                imshow(imdata,'parent',mcamera_ax);
                 str = ['Time: ' datestr(now)];
                 xtextloc = 225;
                 ytextloc = 450;
-                text(localhandles(end-7).Children(1).Children(1),double(xtextloc),double(ytextloc),str,'color','white')
+                text(mcamera_ax,double(xtextloc),double(ytextloc),str,...
+                    'color','white')
             end
             return
+        % if second-largest box is signifcant fraction of largest, use two
+        % largest boxes (often get two images of one droplet)
         elseif((sortedstats(end-1)/sortedstats(end))>0.3)
-            %find the two biggest boxes
             box_ind = find([stats.Area]>=sortedstats(end-1));
+        % otherwise, only one meaningful box
         else
-            %only one meaningful region
             box_ind = find([stats.Area]==sortedstats(end));
         end
         
-        %calculate the centroid
+        % calculate overall centroid from box(es). If multiple boxes, overall
+        % "centroid" taken as mean of individual centroids.
         centroid_data = [stats(box_ind).Centroid];
         y_centroid = mean(centroid_data(2:2:end));
         x_centroid = mean(centroid_data(1:2:end));
+
+        % redraw microscope image with red rectangles annotating detected boxes
+        % and green box (fixed size 40x40) surrounding overall centroid
         if(plotflag)
-            set(microscope_window_handle,'currentaxes',localhandles(end-7).Children(1).Children(1))
-            cla(localhandles(end-7).Children(1).Children(1))
-            imshow(imdata,'parent',localhandles(end-7).Children(1).Children(1))
+            set(microscope_window_handle,'currentaxes',mcamera_ax)
+            cla(mcamera_ax)
+            imshow(imdata,'parent',mcamera_ax)
             str = ['Time: ' datestr(now)];
             xtextloc = 225;
             ytextloc = 450;
-            text(localhandles(end-7).Children(1).Children(1),double(xtextloc),double(ytextloc),str,'color','white')
+            text(mcamera_ax,double(xtextloc),double(ytextloc),str,...
+                'color','white')
             for i = 1:length(box_ind)
-                rectangle('parent',localhandles(end-7).Children(1).Children(1),'Position', stats(box_ind(i)).BoundingBox,...
+                rectangle('parent',mcamera_ax,...
+                    'Position',stats(box_ind(i)).BoundingBox,...
                     'EdgeColor','r', 'LineWidth', 1);
             end
-            set(microscope_window_handle,'currentaxes',localhandles(end-7).Children(1).Children(1))
-            rectangle('parent',localhandles(end-7).Children(1).Children(1),'Position',[x_centroid-20 y_centroid-20 40 40],...
+            set(microscope_window_handle,'currentaxes',mcamera_ax)
+            rectangle('parent',mcamera_ax,...
+                'Position',[x_centroid-20 y_centroid-20 40 40],...
                 'Edgecolor','g','LineWidth',1)
         end
-        blobtime = toc(blobtic);
     end
 
     function mholdposition(source,eventdata)
@@ -1923,7 +2024,6 @@ build_hygrometer_window(window_visibility_default(6));
     %   - update AC frequency display window text
 
         temp = getappdata(main);
-        localhandles = get_figure_handles(microscope_window_handle);
         currenttime = clock;
 
         % Three PID tuning parameters. Roughly speaking,
@@ -2121,6 +2221,9 @@ build_hygrometer_window(window_visibility_default(6));
             arduino_window_handle);
         burst_pushbutton = find_ui_handle('burst_pushbutton',...
             arduino_window_handle);
+        dcoffs = find_ui_handle('DCOFFS',microscope_window_handle);
+        dc_buttons = {'DC OFFS +10','DC OFFS +1','DC OFFS +0.1',...
+            'DC OFFS -10','DC OFFS -1','DC OFFS -0.1'};
         if(get(source,'value')) % initiate connection
             %open the port and lock the selector
             %get identity of port
@@ -2153,7 +2256,6 @@ build_hygrometer_window(window_visibility_default(6));
             setappdata(main,'arduino_comm',obj2);
             
             % turn things on for DC control (Union used 2nd SRS DS345)
-            microhandles = get_figure_handles(microscope_window_handle);
             % ask arduino what setpoint was
             flushinput(obj2) % clear any residual input from Arduino
             fprintf(obj2,'d');
@@ -2172,10 +2274,12 @@ build_hygrometer_window(window_visibility_default(6));
             setappdata(main,'voltage_dc_trap',temp.voltage_dc_trap);
             % Update displayed voltage setpoint
             new_dc_str = [num2str(prev_dc,'%+04.1f') ' V'];
-            set(microhandles(end-20),'string',new_dc_str);
-            %turn on all the buttons
-            for i = 21:26
-                set(microhandles(end-i),'enable','on')
+            set(dcoffs,'string',new_dc_str);
+            % turn on all DC increment buttons
+            for tag_name = dc_buttons
+                dc_button_handle = find_ui_handle(tag_name{:},...
+                    microscope_window_handle);
+                set(dc_button_handle,'enable','on')
             end
             
             % read UPSI data and update display
@@ -2203,10 +2307,11 @@ build_hygrometer_window(window_visibility_default(6));
             set(burst_pushbutton,'enable','off');
             
             % turn things off for DC control
-            microhandles = get_figure_handles(microscope_window_handle);
             % disable DC control buttons
-            for i = 21:26
-                set(microhandles(end-i),'enable','off')
+            for tag_name = dc_buttons
+                dc_button_handle = find_ui_handle(tag_name{:},...
+                    microscope_window_handle);
+                set(dc_button_handle,'enable','off')
             end
             % return voltage_dc_trap to uninitialized value of -1
             setappdata(main,'voltage_dc_trap',-1);
@@ -2330,9 +2435,9 @@ build_hygrometer_window(window_visibility_default(6));
         end
 
         % display new DC setpoint in microscope window
-        microhandles = get_figure_handles(microscope_window_handle);
+        dcoffs = find_ui_handle('DCOFFS',microscope_window_handle);
         new_dc_str = [num2str(dc_trap,'%+04.1f') ' V'];
-        microhandles(end-20).String = new_dc_str;
+        dcoffs.String = new_dc_str;
 
         % update voltage_dc_trap
         temp.voltage_dc_trap = dc_trap;
@@ -2351,16 +2456,21 @@ build_hygrometer_window(window_visibility_default(6));
 %% functions that actually do stuff for the SRS function generator
     function srscomms(source,eventdata)
     % SRSCOMMS  Open or close connection to SRS function generator.
+
+        srs2selectbox = find_ui_handle('SRS2selectbox',...
+            microscope_window_handle);
+        ac_buttons = {'AC FREQ +10','AC FREQ +1','AC FREQ +0.1',...
+            'AC FREQ -10','AC FREQ -1','AC FREQ -0.1','AC AMP  +0.1',...
+            'AC AMP  -0.1'};
         if(get(source,'value'))
             stop(fasttimer)
 
             % get identity of port and set up device connection
-            microhandles = get_figure_handles(microscope_window_handle);
-            portstrings = get(microhandles(end-17),'string');
-            portID = portstrings{get(microhandles(end-17),'value')};
+            portstrings = get(srs2selectbox,'string');
+            portID = portstrings{get(srs2selectbox,'value')};
             DS345_AC = DS345Device(portID);
             setappdata(main,'DS345_AC',DS345_AC);
-            set(microhandles(end-17),'enable','off');
+            set(srs2selectbox,'enable','off');
             set(source,'string','Port Open');
 
             % initialize AC amp and freq to SRS values
@@ -2372,11 +2482,9 @@ build_hygrometer_window(window_visibility_default(6));
             set_ac_freq(existing_freq);
 
             % enable AC buttons
-            for i = 29:34
-                set(microhandles(end-i),'enable','on')
-            end
-            for i = 37:38
-                set(microhandles(end-i),'enable','on')
+            for tag_name = ac_buttons
+                handle = find_ui_handle(tag_name{:},microscope_window_handle);
+                handle.Enable = 'on';
             end
 
             start(fasttimer)
@@ -2387,14 +2495,11 @@ build_hygrometer_window(window_visibility_default(6));
             rmappdata(main,'DS345_AC');
 
             % update display
-            microhandles = get_figure_handles(microscope_window_handle);
-            set(microhandles(end-17),'enable','on');
+            set(srs2selectbox,'enable','on');
             set(source,'string','Port Closed');
-            for i = 29:34
-                set(microhandles(end-i),'enable','off')
-            end
-            for i = 37:38
-                set(microhandles(end-i),'enable','off')
+            for tag_name = ac_buttons
+                handle = find_ui_handle(tag_name{:},microscope_window_handle);
+                handle.Enable = 'off';
             end
 
             % return state variablse to uninitialized values of -1
@@ -2417,8 +2522,7 @@ build_hygrometer_window(window_visibility_default(6));
         ds345.set_freq(num2str(freq));
 
         % display new setpoint in microscope window
-        microhandles = get_figure_handles(microscope_window_handle);
-        ac_freq_handle = microhandles(end-28);
+        ac_freq_handle = find_ui_handle('ACFREQ',microscope_window_handle);
         ac_freq_handle.String = [num2str(freq,'%07.3f') ' Hz'];
 
         % update freq_ac_trap
@@ -2439,8 +2543,7 @@ build_hygrometer_window(window_visibility_default(6));
         ds345.set_amp(num2str(amp),'VP');
 
         % display new setpoint in microscope window
-        microhandles = get_figure_handles(microscope_window_handle);
-        ac_amp_handle = microhandles(end-36);
+        ac_amp_handle = find_ui_handle('ACAMP',microscope_window_handle);
         ac_amp_handle.String = [num2str(amp,'%.2f') ' VP'];
 
         % update amp_ac_trap
