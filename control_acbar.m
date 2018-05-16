@@ -1055,28 +1055,29 @@ build_hygrometer_window(window_visibility_default(6));
         if ischar(tag)
             handle = findobj(parent_handle,'-depth',1,'tag',tag);
             if isempty(handle)
-                ME = MException('find_ui_handle:lookupFailure', ...
-                    ['Did not find element with tag ', tag,...
-                    ' in parent ' parent_handle]);
+                msgtext = ['Did not find element with tag ', tag,...
+                    ' in parent ' parent_handle.Tag];
+                ME = MException('find_ui_handle:lookupFailure',msgtext);
                 throw(ME);
             end
         elseif iscellstr(tag)
             % drill down through cell array of nested tag strings
             nested_handle = parent_handle;
             for nested_tag = tag
-                nested_handle = findobj(nested_handle,'-depth',1,'tag',nested_tag{:});
+                nested_handle = findobj(nested_handle,'-depth',1,...
+                    'tag',nested_tag{:});
                 if isempty(nested_handle)
-                    ME = MException('find_ui_handle:lookupFailure', ...
-                        ['Did not find element with tag ', nested_tag,...
-                        ' in parent ' nested_handle]);
+                    msgtext = ['Did not find element with tag ', nested_tag,...
+                        ' in parent ' nested_handle.Tag];
+                    ME = MException('find_ui_handle:lookupFailure',msgtext);
                     throw(ME);
                 end
             end
             handle = nested_handle;
         else
-            ME = MException('find_ui_handle:badTag', ...
-                ['input tag argument needs to be a string or a cell' ...
-                 'array of strings']);
+            msgtext = ['input tag argument needs to be a string or a cell' ...
+                 'array of strings'];
+            ME = MException('find_ui_handle:badTag', msgtext);
             throw(ME);
         end
     end
