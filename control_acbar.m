@@ -767,7 +767,7 @@ build_hygrometer_window(window_visibility_default(6));
         
         
         bg3 = uibuttongroup(MKS_window_handle,'Position',[0 0.05 .15 .5],...
-            'title','Dry CH3','SelectionChangeFcn',@MKS_mode,'tag','3');
+            'title','Dry CH3','SelectionChangeFcn',@MKS_mode,'tag','bg3');
         
         % Create three radio buttons in the button group.
         mks3_r1 = uicontrol(bg3,'Style',...
@@ -793,14 +793,13 @@ build_hygrometer_window(window_visibility_default(6));
             'position',[10 10 65 20],...
             'callback',{@MKSchangeflow,3,NaN},'enable','off','tag','3');
         
-        
-        
         mks3act = uicontrol(bg3,'style','text',...
             'position',[10 95 65 20],'string','? sccm',...
             'tag','mks3act');
+
         
         bg4 = uibuttongroup(MKS_window_handle,'Position',[0.17 0.05 .15 .5],...
-            'title','Humid CH4','SelectionChangeFcn',@MKS_mode,'tag','4');
+            'title','Humid CH4','SelectionChangeFcn',@MKS_mode,'tag','bg4');
         
         % Create three radio buttons in the button group.
         mks4_r1 = uicontrol(bg4,'Style',...
@@ -1279,15 +1278,20 @@ build_hygrometer_window(window_visibility_default(6));
 
                 if(temp.RampFlag)
                     dt = (now-temp.RampTime_init)*24;
-                    localhandles = get_figure_handles(MKS_window_handle);
+                    runramp_button = find_ui_handle('runramp_button',...
+                        MKS_window_handle);
+                    hum_table = find_ui_handle('hum_table',MKS_window_handle);
+                    ramp_text = find_ui_handle('ramp_text',MKS_window_handle);
+                    mks3sp = find_ui_handle({'bg3','3'},MKS_window_handle);
+                    mks4sp = find_ui_handle({'bg4','4'},MKS_window_handle);
                     if(dt>temp.Ramp_data(end,1))
                         %the ramp is over
-                        localhandles(5).Value = 0;
-                        set(localhandles(9),'enable','on')
+                        runramp_button.Value = 0;
+                        set(hum_table,'enable','on')
                         setappdata(main,'RampFlag',0)
-                        set(localhandles(5),'string','Ramp Trap')
+                        set(runramp_button,'string','Ramp Trap')
                     else
-                        localhandles(4).String = ['Ramp: ' num2str(dt,'%2.1f') ' of ' num2str(temp.Ramp_data(end,1),'%2.1f') ' hrs'];
+                        ramp_text.String = ['Ramp: ' num2str(dt,'%2.1f') ' of ' num2str(temp.Ramp_data(end,1),'%2.1f') ' hrs'];
                         flow1 = min([interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,2),dt,'linear') 200]);
                         flow2 = min([interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,3),dt,'linear') 200]);
                         T = interp1(temp.Ramp_data(:,1),temp.Ramp_data(:,4),dt,'linear');
@@ -1297,21 +1301,21 @@ build_hygrometer_window(window_visibility_default(6));
                             %make sure MFC is turned to SETPOINT
                             MKSsend(source,eventdata,'QMD3!SETPOINT');
                             MKSchangeflow(source,eventdata,3,flow1);
-                            localhandles(11).Children(2).String = flow1;
+                            mks3sp.String = flow1;
                         elseif(flow1<4)
                             %turn MFC to CLOSE
                             MKSsend(source,eventdata,'QMD3!CLOSE');
-                            localhandles(11).Children(2).String = 'CLOSED';
+                            mks3sp.String = 'CLOSED';
                         end
                         if(flow2>=4) %humid
                             %make sure MFC is turned to SETPOINT
                             MKSsend(source,eventdata,'QMD4!SETPOINT');
                             MKSchangeflow(source,eventdata,4,flow2);
-                            localhandles(10).Children(2).String = flow2;
+                            mks4sp.String = flow2;
                         elseif(flow2<4)
                             %turn MFC to CLOSE
                             MKSsend(source,eventdata,'QMD4!CLOSE');
-                            localhandles(10).Children(2).String = 'CLOSED';
+                            mks4sp.String = 'CLOSED';
                         end
 
                         Lauda_send_T(source,eventdata,T);
@@ -1500,11 +1504,24 @@ build_hygrometer_window(window_visibility_default(6));
 
         % refresh in MKS window
         if(ishandle(MKS_window_handle))
-            localhandles = get_figure_handles(MKS_window_handle);
-            set(localhandles(20),'String',serialinfo.AvailableSerialPorts);
-            set(localhandles(19),'value',0,'string','Port Closed')
-            set(localhandles(18),'String',serialinfo.AvailableSerialPorts);
-            set(localhandles(17),'value',0,'string','Port Closed')
+            julaboselectbox = find_ui_handle('Julaboselectbox',...
+                MKS_window_handle);
+            mksselectbox = find_ui_handle('MKSselectbox',...
+                MKS_window_handle);
+            laudaselectbox = find_ui_handle('Laudaselectbox',...
+                MKS_window_handle);
+            julaboopenclose = find_ui_handle('Julaboopenclose',...
+                MKS_window_handle);
+            mksopenclose = find_ui_handle('MKSopenclose ',...
+                MKS_window_handle);
+            laudaopenclose = find_ui_handle('Laudaopenclose',...
+                MKS_window_handle);
+            set(julaboselectbox,'String',serialinfo.AvailableSerialPorts)
+            set(mksselectbox,'String',serialinfo.AvailableSerialPorts)
+            set(laudaselectbox,'String',serialinfo.AvailableSerialPorts)
+            set(julaboopenclose,'value',0,'string','Port Closed')
+            set(mksopenclose,'value',0,'string','Port Closed')
+            set(laudaopenclose,'value',0,'string','Port Closed')
         end
     end
 
@@ -1911,21 +1928,25 @@ build_hygrometer_window(window_visibility_default(6));
                 % feedback on and having it turn itself off will stop ramp.
                 temp = getappdata(main);
                 if(temp.RampFlag)
-                    MKShandles = get_figure_handles(MKS_window_handle);
-                    set(MKShandles(9),'enable','on')
+                    hum_table = find_ui_handle('hum_table',MKS_window_handle);
+                    ramp_text = find_ui_handle('ramp_text',MKS_window_handle);
+                    runramp_button = find_ui_handle('runramp_button',...
+                        MKS_window_handle);
+                    set(hum_table,'enable','on')
                     setappdata(main,'RampFlag',0)
-                    set(MKShandles(5),'string','Ramp Trap')
-                    set(MKShandles(4),'string','Stopped Ramp')
-                    set(MKShandles(4),'value',0)
+                    set(runramp_button,'string','Ramp Trap')
+                    set(ramp_text,'string','Stopped Ramp')
+                    % this used to refer to index of ramp_text ... bug?
+                    set(runramp_button,'value',0)
                     % delete table entries that have already passed
-                    data = MKShandles(9).Data;
-                    data_times = MKShandles(9).Data(:,1);
+                    data = hum_table.Data;
+                    data_times = hum_table.Data(:,1);
                     now_data_time = (now-temp.RampTime_init)*24;
                     end_prev_data = find(data_times<now_data_time,1,'last');
                     data(2:end_prev_data,:) = [];
                     % adjust timestamps to match
                     data(2:end,1) = data(2:end,1)-now_data_time;
-                    MKShandles(9).Data = data;
+                    hum_table.Data = data;
                 end
             end
             set(mhold_position,'value',0)
@@ -2569,16 +2590,17 @@ build_hygrometer_window(window_visibility_default(6));
 %% functions that actually do stuff for the MKS and Lauda board
 
     function Laudacomms(source,eventdata)
-        localhandles = get_figure_handles(MKS_window_handle);
+        laudaselectbox = find_ui_handle('laudaselectbox',MKS_window_handle);
+        laudaopenclose = find_ui_handle('laudaopenclose',MKS_window_handle);
         if(get(source,'value'))
             stop(fasttimer)
             %get identity of port
             
-            portstrings = get(localhandles(18),'string');
-            portID = portstrings{get(localhandles(18),'value')};
+            portstrings = get(laudaselectbox,'string');
+            portID = portstrings{get(laudaselectbox,'value')};
             
-            set(localhandles(18),'enable','off');
-            set(localhandles(17),'string','Port Open');
+            set(mksselectbox,'enable','off');
+            set(laudaopenclose,'string','Port Open');
             
             % Find a serial port object.
             obj1 = instrfind('Type', 'serial', 'Port', portID, 'Tag', '');
@@ -2599,52 +2621,63 @@ build_hygrometer_window(window_visibility_default(6));
             setappdata(main,'LaudaRS232',obj1)
             
             update_Lauda(0)
-            
-            
-            
         else
-            %close the port
+            % toggle ui controls
+            lauda_on_off = find_ui_handle('Lauda_on_off',MKS_window_handle);
+            lauda_chiller_on_off = find_ui_handle('Lauda_chiller_on_off',...
+                MKS_window_handle);
+            lauda_t_controlbutton = find_ui_handle('Lauda_T_controlbutton',...
+                MKS_window_handle);
+            lauda_set_t = find_ui_handle('Lauda_set_T',MKS_window_handle);
+            set(laudaselectbox,'enable','on');
+            set(laudaopenclose,'string','Port Closed');
+            set(lauda_on_off,'enable','off');
+            set(lauda_chiller_on_off,'enable','off');
+            set(lauda_t_controlbutton,'enable','off');
+            set(lauda_set_t,'enable','off');
+            % close serial port and remove instrument object
             temp = getappdata(main);
-            set(localhandles(18),'enable','on');
-            set(localhandles(17),'string','Port Closed');
-            set(localhandles(3),'enable','off');
-            set(localhandles(26),'enable','off');
-            set(localhandles(27),'enable','off');
-            set(localhandles(2),'enable','off');
             fclose(temp.LaudaRS232);
             rmappdata(main,'LaudaRS232');
-            
         end
     end
 
     function update_Lauda(savelogic)
-        localhandles = get_figure_handles(MKS_window_handle);
+        lauda_on_off = find_ui_handle('Lauda_on_off',MKS_window_handle);
+        lauda_chiller_on_off = find_ui_handle('Lauda_chiller_on_off',...
+            MKS_window_handle);
+        lauda_t_controlbutton = find_ui_handle('Lauda_T_controlbutton',...
+            MKS_window_handle);
+        lauda_set_t = find_ui_handle('Lauda_set_T',MKS_window_handle);
+        lauda_reported_t = find_ui_handle('Lauda_reported_T',MKS_window_handle);
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
         temp = getappdata(main);
         obj1 = temp.LaudaRS232;
+
         data8 = query(obj1, 'STATUS');
         if(str2num(data8)~=0)
             error('Lauda communication failure')
         end
         
-        %read status of power
+        % read power status
         onoff = query(obj1, 'IN_MODE_02');
-        %1 means off, 0 means on
         if(str2num(onoff)==1)
-            %pump is off
-            
-            set(localhandles(3),'string','Pump off','Value',0,'enable','on')
+            % pump is off
+            set(lauda_on_off,'string','Pump off','Value',0,'enable','on')
         else
-            %pump is on
-            set(localhandles(3),'string','Pump on','value',1,'enable','on')
+            % pump is on
+            set(lauda_on_off,'string','Pump on','value',1,'enable','on')
         end
         
         cooleronoff = query(obj1,'IN_SP_02');
         if(str2num(cooleronoff)==2)
-            %automatic
-            set(localhandles(26),'string','Chiller Auto','Value',1,'enable','on');
+            % automatic
+            set(lauda_chiller_on_off,'string','Chiller Auto','Value',1,...
+                'enable','on');
         elseif(str2num(cooleronoff)==0)
-            %off
-            set(localhandles(26),'string','Chiller Off','Value',0,'enable','on');
+            % off
+            set(lauda_chiller_on_off,'string','Chiller Off','Value',0,...
+                'enable','on');
         else
             error('unrecognized cooler mode!')
         end
@@ -2652,10 +2685,12 @@ build_hygrometer_window(window_visibility_default(6));
         controler_internalvsexternal = query(obj1,'IN_MODE_01');
         if(str2num(controler_internalvsexternal)==1)
             %automatic
-            set(localhandles(27),'string','Control via PT100','Value',1,'enable','on');
+            set(lauda_t_controlbutton,'string','Control via PT100',...
+                'Value',1,'enable','on');
         elseif(str2num(controler_internalvsexternal)==0)
             %off
-            set(localhandles(27),'string','Control via Bath','Value',0,'enable','on');
+            set(lauda_t_controlbutton,'string','Control via Bath',...
+                'Value',0,'enable','on');
         else
             error('unrecognized control mode!')
         end
@@ -2670,7 +2705,7 @@ build_hygrometer_window(window_visibility_default(6));
             setT(1) = [];
         end
         
-        set(localhandles(2),'string',setT,'enable','on')
+        set(lauda_set_t,'string',setT,'enable','on')
         
         actualT = query(obj1, 'IN_PV_00');
         
@@ -2688,9 +2723,10 @@ build_hygrometer_window(window_visibility_default(6));
            externalT(1) = []; 
         end
         
-        set(localhandles(1),'string',['Int:' actualT ' Ext: ' externalT],'enable','on')
+        set(lauda_reported_t,'string',['Int:' actualT ' Ext: ' externalT],...
+            'enable','on')
         
-        localhandles(9).Data(1,2) = str2num(setT);
+        hum_table.Data(1,2) = str2num(setT);
         
         temp.Laudadatalog(end+1,:) = [now str2num(onoff) str2num(setT) str2num(actualT) str2num(externalT)];
         if(savelogic)
@@ -2700,40 +2736,42 @@ build_hygrometer_window(window_visibility_default(6));
 
     function LaudaPower(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(MKS_window_handle);
+        lauda_on_off = find_ui_handle('Lauda_on_off',MKS_window_handle);
         obj1 = temp.LaudaRS232;
         if(get(source,'value'))
             qd = query(obj1,'START');
-            set(localhandles(3),'string','Pump on')
+            set(lauda_on_off,'string','Pump on')
         else
             qd = query(obj1,'STOP');
-            set(localhandles(3),'string','Pump off')
+            set(lauda_on_off,'string','Pump off')
         end
     end
 
     function LaudaChiller(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(MKS_window_handle);
+        lauda_chiller_on_off = find_ui_handle('Lauda_chiller_on_off',...
+            MKS_window_handle);
         obj1 = temp.LaudaRS232;
         if(get(source,'value'))
             qd = query(obj1,'OUT_SP_02_02');
-            set(localhandles(26),'string','Chiller auto')
+            set(lauda_chiller_on_off,'string','Chiller auto')
         else
             qd = query(obj1,'OUT_SP_02_00');
-            set(localhandles(26),'string','Chiller off')
+            set(lauda_chiller_on_off,'string','Chiller off')
         end
     end
 
     function LaudaControl(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(MKS_window_handle);
+        lauda_t_controlbutton = find_ui_handle('Lauda_T_controlbutton',...
+            MKS_window_handle);
         obj1 = temp.LaudaRS232;
         if(get(source,'value'))
             qd = query(obj1,'OUT_MODE_01_1');
-            set(localhandles(27),'string','Control via PT100')
+            set(lauda_t_controlbutton,'string','Control via PT100')
         else
             qd = query(obj1,'OUT_MODE_01_0');
-            set(localhandles(27),'string','Control via Bath')
+            set(lauda_t_controlbutton,'string','Control via Bath')
         end
     end
 
@@ -2745,22 +2783,22 @@ build_hygrometer_window(window_visibility_default(6));
         end
         %TODO: add saftey feature to prevent user from typing in something dumb
         temp = getappdata(main);
-        localhandles = get_figure_handles(MKS_window_handle);
         obj1 = temp.LaudaRS232;
         qd = query(obj1,['OUT_SP_00_' num2str(setT,'%5.2f')]);
     end
 
     function Julabocomms(source,eventdata)
-        localhandles = get_figure_handles(MKS_window_handle);
+        julaboselectbox = find_ui_handle('Julaboselectbox',MKS_window_handle);
+        julaboopenclose = find_ui_handle('Julaboopenclose',MKS_window_handle);
         if(get(source,'value'))
             stop(fasttimer)
             %get identity of port
             
-            portstrings = get(localhandles(25),'string');
-            portID = portstrings{get(localhandles(25),'value')};
+            portstrings = get(julaboselectbox,'string');
+            portID = portstrings{get(julaboselectbox,'value')};
             
-            set(localhandles(25),'enable','off');
-            set(localhandles(24),'string','Port Open');
+            set(julaboselectbox,'enable','off');
+            set(julaboopenclose,'string','Port Open');
             
             
             % Find a serial port object.
@@ -2792,20 +2830,29 @@ build_hygrometer_window(window_visibility_default(6));
             
             update_Julabo(0)
         else
-            %close the port
+            % toggle ui elements
+            julabo_reported_t = find_ui_handle('Julabo_reported_T',...
+                MKS_window_handle);
+            julabo_set_t = find_ui_handle('Julabo_set_T',MKS_window_handle);
+            julabo_on_off = find_ui_handle('Julabo_on_off',MKS_window_handle);
+            set(julaboselectbox,'enable','on');
+            set(julaboopenclose,'string','Port Closed');
+            set(julabo_set_t,'string','?','enable','off');
+            set(julabo_reported_t,'string','?','enable','off');
+            set(julabo_on_off,'string','Pump ?','Value',0,'enable','off');
+            % close serial port and remove instrument object
             temp = getappdata(main);
-            set(localhandles(25),'enable','on');
-            set(localhandles(24),'string','Port Closed');
-            set(localhandles(22),'string','?','enable','off');
-            set(localhandles(21),'string','?','enable','off');
-            set(localhandles(23),'string','Pump ?','Value',0,'enable','off');
             fclose(temp.JulaboRS232);
             rmappdata(main,'JulaboRS232');
         end
     end
 
     function update_Julabo(savelogic)
-        localhandles = get_figure_handles(MKS_window_handle);
+        julabo_set_t = find_ui_handle('Julabo_set_T',MKS_window_handle);
+        julabo_reported_t = find_ui_handle('Julabo_reported_T',...
+            MKS_window_handle);
+        julabo_on_off = find_ui_handle('Julabo_on_off',MKS_window_handle);
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
         temp = getappdata(main);
         obj1 = temp.JulaboRS232;
         data8 = query(obj1, 'status');
@@ -2815,30 +2862,26 @@ build_hygrometer_window(window_visibility_default(6));
             error('Julabo communication failure')
         end
         
-        %read status of power
+        % read power status
         onoff = query(obj1, 'in_mode_05');
-        %1 means off, 0 means on
         if(str2num(onoff)==0)
             %pump is off
-            
-            set(localhandles(23),'string','Pump off','Value',0,'enable','on')
+            set(julabo_on_off,'string','Pump off','Value',0,'enable','on')
         else
             %pump is on
-            set(localhandles(23),'string','Pump on','value',1,'enable','on')
+            set(julabo_on_off,'string','Pump on','value',1,'enable','on')
         end
         
-        %read current T setpoint
+        % read current T setpoint
         setT = query(obj1, 'in_sp_00');
         
-        set(localhandles(22),'string',setT(1:end-2),'enable','on')
+        set(julabo_set_t,'string',setT(1:end-2),'enable','on')
         
-        localhandles(9).Data(1,5) = str2num(setT(1:end-2));
+        hum_table.Data(1,5) = str2num(setT(1:end-2));
         
         actualT = query(obj1, 'in_pv_00');
         
-        set(localhandles(21),'string',actualT(1:end-2),'enable','on')
-        
-        
+        set(julabo_reported_t,'string',actualT(1:end-2),'enable','on')
         
         temp.Julabodatalog(end+1,:) = [now str2num(onoff) str2num(setT) str2num(actualT)];
         if(savelogic)
@@ -2848,14 +2891,14 @@ build_hygrometer_window(window_visibility_default(6));
 
     function JulaboPower(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(MKS_window_handle);
+        julabo_on_off = find_ui_handle('Julabo_on_off',MKS_window_handle);
         obj1 = temp.JulaboRS232;
         if(get(source,'value'))
             fprintf(obj1,'out_mode_05 1'); %start the pump
-            set(localhandles(23),'string','Pump on')
+            set(julabo_on_off,'string','Pump on')
         else
             fprintf(obj1,'out_mode_05 0'); %stop the pump
-            set(localhandles(23),'string','Pump off')
+            set(julabo_on_off,'string','Pump off')
         end
     end
 
@@ -2867,7 +2910,6 @@ build_hygrometer_window(window_visibility_default(6));
         end
         %TODO: add safety feature to prevent user from typing in something dumb
         temp = getappdata(main);
-        localhandles = get_figure_handles(MKS_window_handle);
         obj1 = temp.JulaboRS232;
         fprintf(obj1,['out_sp_00 ' num2str(setT,'%5.2f')]);
     end
@@ -2878,12 +2920,18 @@ build_hygrometer_window(window_visibility_default(6));
     %
     %   Serial object is set to main.MKS946_comm.
 
+        mks3sp = find_ui_handle({'bg3','3'},MKS_window_handle);
+        mks4sp = find_ui_handle({'bg4','4'},MKS_window_handle);
+        mksselectbox = find_ui_handle('MKSselectbox',MKS_window_handle);
+        mksopenclose = find_ui_handle('MKSopenclose',MKS_window_handle);
+        % direct sending of commands to MKS was either deprecated or not fully
+        % implemented
+        mkssendbutton = find_ui_handle('MKSsendbutton',MKS_window_handle);
         if(get(source,'value'))
-            %open the port and lock the selector
-            %get identity of port
-            localhandles = get_figure_handles(MKS_window_handle);
-            portstrings = get(localhandles(20),'string');
-            portID = portstrings{get(localhandles(20),'value')};
+            % open port and lock selector
+            % get port identity
+            portstrings = get(mksselectbox,'string');
+            portID = portstrings{get(mksselectbox,'value')};
             
             % Find a serial port object.
             obj1 = instrfind('Type', 'serial', 'Port', portID, 'Tag', '');
@@ -2902,12 +2950,12 @@ build_hygrometer_window(window_visibility_default(6));
             %open the serial object
             fopen(obj1);
             setappdata(main,'MKS946_comm',obj1)
-            set(localhandles(20),'enable','off');
-            set(localhandles(19),'string','Port Open');
-            set(localhandles(13),'enable','on');
+            set(mksselectbox,'enable','off');
+            set(mksopenclose,'string','Port Open');
+            set(mkssendbutton,'enable','on');
             
-            localhandles(10).Children(2).Enable = 'on';
-            localhandles(11).Children(2).Enable = 'on';
+            mks3sp.Enable = 'on';
+            mks4sp.Enable = 'on';
             update_MKS_values(source,eventdata,0)
             
         else
@@ -2918,12 +2966,11 @@ build_hygrometer_window(window_visibility_default(6));
                 fclose(temp.MKS946_comm);
                 rmappdata(main,'MKS946_comm');
             end
-            localhandles = get_figure_handles(MKS_window_handle);
-            set(localhandles(20),'enable','on');
-            set(localhandles(19),'string','Port Closed');
-            set(localhandles(13),'enable','off');
-            localhandles(10).Children(2).Enable = 'off';
-            localhandles(11).Children(2).Enable = 'off';
+            set(mksselectbox,'enable','on');
+            set(mksopenclose,'string','Port Closed');
+            set(mkssendbutton,'enable','off');
+            mks3sp.Enable = 'off';
+            mks4sp.Enable = 'off';
         end
         
     end
@@ -2933,37 +2980,44 @@ build_hygrometer_window(window_visibility_default(6));
     %
     %   Dispatched as part of datalogic branch of fasttimerFcn.
 
-        %query mode ('QMDn?') of ch3 and 4 (hard coded)
-        localhandles = get_figure_handles(MKS_window_handle);
-        % for readability, these seem to be what the different localhandles
-        % correspond to
-        ch3_bg = localhandles(11); % ch 3 button group
-        ch4_bg = localhandles(10); % ch 4 button group
-        hum_table = localhandles(9); % humidity table
+        mks3_r1 = find_ui_handle({'bg3','mks3_r1'},MKS_window_handle);
+        mks3_r2 = find_ui_handle({'bg3','mks3_r2'},MKS_window_handle);
+        mks3_r3 = find_ui_handle({'bg3','mks3_r3'},MKS_window_handle);
+        mks3sp = find_ui_handle({'bg3','3'},MKS_window_handle);
+        mks3act = find_ui_handle({'bg3','mks3act'},MKS_window_handle);
 
+        mks4_r1 = find_ui_handle({'bg4','mks4_r1'},MKS_window_handle);
+        mks4_r2 = find_ui_handle({'bg4','mks4_r2'},MKS_window_handle);
+        mks4_r3 = find_ui_handle({'bg4','mks4_r3'},MKS_window_handle);
+        mks4sp = find_ui_handle({'bg4','4'},MKS_window_handle);
+        mks4act = find_ui_handle({'bg4','mks4act'},MKS_window_handle);
+
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
+
+        % query mode ('QMDn?') of ch3 and 4 (hard coded)
         md3 = MKSsend(source,eventdata,'QMD3?');
         switch md3
             case 'OPEN',
-                ch3_bg.Children(5).Value = 1;
+                mks3_r1.Value = 1;
                 MKS3onoff = NaN;
             case 'CLOSE',
-                ch3_bg.Children(4).Value = 1;
+                mks3_r2.Value = 1;
                 MKS3onoff = 0;
             case 'SETPOINT'
-                ch3_bg.Children(3).Value = 1;
+                mks3_r3.Value = 1;
                 MKS3onoff = 1;
         end
         
         md4 = MKSsend(source,eventdata,'QMD4?');
         switch md4
             case 'OPEN',
-                ch4_bg.Children(5).Value = 1;
+                mks4_r1.Value = 1;
                 MKS4onoff = NaN;
             case 'CLOSE',
-                ch4_bg.Children(4).Value = 1;
+                mks4_r2.Value = 1;
                 MKS4onoff = 0;
             case 'SETPOINT'
-                ch4_bg.Children(3).Value = 1;
+                mks4_r3.Value = 1;
                 MKS4onoff = 1;
         end
         
@@ -2972,13 +3026,13 @@ build_hygrometer_window(window_visibility_default(6));
         F_humid = str2num(sp4)*MKS4onoff;
         % format setpoint as string and (probably?) update textbox
         sp4_str = sprintf('%.2f',str2num(sp4));
-        set(ch4_bg.Children(2),'string',sp4_str(1:4));
+        set(mks4sp,'string',sp4_str(1:4));
         
         % query ch3 setpoint
         sp3 = MKSsend(source,eventdata,'QSP3?');
         F_dry = str2num(sp3)*MKS3onoff;
         sp3_str = sprintf('%.2f',str2num(sp3));
-        set(ch3_bg.Children(2),'string',sp3_str(1:4));
+        set(mks3sp,'string',sp3_str(1:4));
         
         % fill in values of table
         hum_table.Data(1,4) = F_dry+F_humid;
@@ -2986,17 +3040,19 @@ build_hygrometer_window(window_visibility_default(6));
         % query ch3 and ch4 flow rates, update displayed values
         stat = MKSsend(source,eventdata,'FR3?');
         stat = sprintf('%.2f',str2num(stat));
-        ch3_bg.Children(1).String = [stat ' sccm'];
+        mks3act.String = [stat ' sccm'];
         
         stat = MKSsend(source,eventdata,'FR4?');
         stat = sprintf('%.2f',str2num(stat));
-        ch4_bg.Children(1).String = [stat ' sccm'];
+        mks4act.String = [stat ' sccm'];
         
         % calculate RH based on flow ratio and bath temperature
         % (assumes 19 C if not provided)
         if(hum_table.Data(1,2)~=-999)
-            if(isa(str2num(localhandles(22).String),'numeric'))
-                Bath_T = str2num(localhandles(22).String);
+            julabo_set_t = find_ui_handle('Julabo_set_T',MKS_window_handle);
+            julabo_set_t_num = str2num(julabo_set_t.String)
+            if(isa(julabo_set_t_num,'numeric'))
+                Bath_T = julabo_set_t_num
             else
                 Bath_T = 19;
             end
@@ -3024,11 +3080,14 @@ build_hygrometer_window(window_visibility_default(6));
     %   Common commands are QMDn, QSPn, FRn. See MKS manual for full list.
 
         temp = getappdata(main);
-        localhandles = get_figure_handles(MKS_window_handle);
+        mkscommandline = find_ui_handle('MKScommandline',MKS_window_handle);
+        mksresponse = find_ui_handle('MKSresponse',MKS_window_handle);
+        % if varargin is passed, use that as <Command>. otherwise use string in
+        % MKScommandline
         if(length(varargin)==1)
             arg1 = varargin{1};
         else
-            arg1 = localhandles(14).String;
+            arg1 = mkscommandline.String;
         end
 
         querytext = ['@253' arg1 ';FF'];
@@ -3047,15 +3106,16 @@ build_hygrometer_window(window_visibility_default(6));
         if(strcmp(data1(5:7),'NAK'))
             error('Communication error to MKS!')
         end
-        % return <Response> portion of response string (see format above)
+        % return and display <Response> from response string (see format above)
         response = data1(8:end-2);
-        % probably sets the invisible `MKSresponse` uicontrol?
-        set(localhandles(12),'string',data1)
+        set(mksresponse,'string',data1)
     end
 
     function MKS_mode(source,eventdata)
         %figure out where the button push happened
-        pan_num = get(source,'tag');
+        % assumes tags is 'bg3 or 'bg4'
+        pan_num_tag = get(source,'tag');
+        pan_num = pan_num_tag(3:end);
         selection = [];
         if(strcmp(upper(get(eventdata.NewValue,'String')),'OPEN'))
             selection = questdlg('Really OPEN valve?','Run OPEM valve?',...
@@ -3115,27 +3175,27 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function cleartable_fcn(source,eventdata)
-        localhandles = get_figure_handles(MKS_window_handle);
-        localhandles(9).Data = [0 -999 -999 -999];
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
+        hum_table.Data = [0 -999 -999 -999];
     end
 
     function edit_table(source,eventdata)
-        localhandles = get_figure_handles(MKS_window_handle);
-        data = localhandles(9).Data;
-        localhandles(9).Data = data;
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
+        data = hum_table.Data;
+        hum_table.Data = data;
     end
 
     function addrow_fcn(source,eventdata)
-        localhandles = get_figure_handles(MKS_window_handle);
-        data = localhandles(9).Data;
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
+        data = hum_table.Data;
         data(end+1,:) = data(end,:); %if data is an array.
         data(end,1) = data(end,1)+0.5; %make default 30 minutes per step
-        localhandles(9).Data = data;
+        hum_table.Data = data;
     end
 
     function temp_fig = sim_ramp_fcn(source,eventdata)
-        localhandles = get_figure_handles(MKS_window_handle);
-        data = localhandles(9).Data;
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
+        data = hum_table.Data;
         fc1 = 200;
         fc2 = 200;
         %put in 10 points in between every one that the user requests
@@ -3201,7 +3261,8 @@ build_hygrometer_window(window_visibility_default(6));
 
 
     function drive_ramps_fcn(source,eventdata)
-        localhandles = get_figure_handles(MKS_window_handle);
+        runramp_button = find_ui_handle('runramp_button',MKS_window_handle);
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
         if(source.Value)
             stop(fasttimer)
             stop(errorcatchtimer)
@@ -3211,21 +3272,21 @@ build_hygrometer_window(window_visibility_default(6));
             if(strcmp(selection,'Yes'))
                 dt_str = inputdlg('Start ramp at what relative time?','Ramp time start',1,{'0'});
                 dt_num = str2num(dt_str{1});
-                set(localhandles(9),'enable','off')
+                set(hum_table,'enable','off')
                 setappdata(main,'RampFlag',1)
-                set(localhandles(5),'string','Ramping...')
+                set(runramp_button,'string','Ramping...')
                 setappdata(main,'RampTime_init',now-dt_num/24);
                 close(temp_fig)
             else
                 %turn button back off
-                localhandles(5).Value = 0;
+                runramp_button.Value = 0;
             end
             start(fasttimer)
             start(errorcatchtimer)
         else
-            set(localhandles(9),'enable','on')
+            set(hum_table,'enable','on')
             setappdata(main,'RampFlag',0)
-            set(localhandles(5),'string','Ramp Trap')
+            set(runramp_button,'string','Ramp Trap')
         end
     end
 
@@ -3936,19 +3997,21 @@ build_hygrometer_window(window_visibility_default(6));
         eqinx = strfind(a,'=');
         Td = str2num(a(eqinx+1:end));
         
-        %calculate theoretical dewpoint if available
-        MKShandles = get_figure_handles(MKS_window_handle);
+        % calculate theoretical dewpoint if available
+        hum_table = find_ui_handle('hum_table',MKS_window_handle);
         dwpt_thy = NaN; %set a default value
-        if(MKShandles(9).Data(1,2)~=-999)
-            %currently assuming RT = 20 degC!
-            if(isa(str2num(MKShandles(22).String),'numeric'))
-                Bath_T = str2num(MKShandles(22).String);
+        if(hum_table.Data(1,2)~=-999)
+            % assuming RT = 19 deg C
+            julabo_set_t = find_ui_handle('Julabo_set_T',MKS_window_handle);
+            julabo_set_t_num = str2num(julabo_set_t.String)
+            if(isa(julabo_set_t_num,'numeric'))
+                Bath_T = julabo_set_t_num
             else
                 Bath_T = 19;
             end
-            RH_thy = MKShandles(9).Data(1,3)/100;
+            RH_thy = hum_table.Data(1,3)/100;
             %calculate the theoretical dewpoint
-            Trap_saturation = water_vapor_pressure(MKShandles(9).Data(1,2)+273.15);
+            Trap_saturation = water_vapor_pressure(hum_table.Data(1,2)+273.15);
             dwpt_thy = (water_dew_pt(Trap_saturation*RH_thy)-273.15);
         end
         
