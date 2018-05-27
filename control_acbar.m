@@ -971,7 +971,8 @@ build_hygrometer_window(window_visibility_default(6));
             'tag','a_textreadout');
         
         %make the spectrometer axes
-        ax11 = axes('parent',Andor_window_handle,'position',[.1 .55 .8 .4]);
+        ax11 = axes('parent',Andor_window_handle,'position',[.1 .55 .8 .4],...
+            'tag','ax11');
         set(ax11,'nextplot','replacechildren');
         colormap(ax11,'jet')
         set(ax11,'xlimmode','auto')
@@ -1265,14 +1266,18 @@ build_hygrometer_window(window_visibility_default(6));
 
                 % update Andor spectrum (plotted both Andor window and
                 % third tab of fringe window)
-                andor_localhandles = get_figure_handles(Andor_window_handle);
                 fringe_andor_plot = find_ui_handle({'tgroup1','tg1t3','ax23'},...
                     fringe_window_handle);
                 set(fringe_andor_plot,'ydir','normal');
                 update_andor_plot_1D(fringe_andor_plot);
-                if(temp.AndorFlag&&andor_localhandles(11).Value==1)
-                    update_andor_plot_1D(andor_localhandles(end));
-                elseif(temp.AndorFlag&&andor_localhandles(11).Value==2)
+                % andor window plot depends on whether plotting single scan or
+                % kinetic series
+                astatus_selectbox = find_ui_handle('astatus_selectbox',...
+                    Andor_window_handle);
+                if(temp.AndorFlag&&astatus_selectbox.Value==1)
+                    ax11 = find_ui_handle('ax11',Andor_window_handle);
+                    update_andor_plot_1D(ax11);
+                elseif(temp.AndorFlag&&astatus_selectbox.Value==2)
                     update_andor_plot_2D();
                 end
 
@@ -3305,55 +3310,72 @@ build_hygrometer_window(window_visibility_default(6));
         end
         good_to_go(Andor_window_handle)
         CheckError(ret);
-        localhandles = get_figure_handles(Andor_window_handle);
+
+        acooler = find_ui_handle('acooler',Andor_window_handle);
+        acooleractualtext = find_ui_handle('acooleractualtext',...
+            Andor_window_handle);
+        acoolersettext = find_ui_handle('acoolersettext',Andor_window_handle);
+        aloop_scan = find_ui_handle('aloop_scan',Andor_window_handle);
+        astatus_selectbox = find_ui_handle('astatus_selectbox',...
+            Andor_window_handle);
+        a_kincyctime = find_ui_handle('a_kincyctime',Andor_window_handle);
+        a_numkinseries = find_ui_handle('a_numkinseries',Andor_window_handle);
+        a_integrationtime = find_ui_handle('a_integrationtime',...
+            Andor_window_handle);
+        aaqdata = find_ui_handle('aaqdata',Andor_window_handle);
+        center_wavelength_selectbox = find_ui_handle('center_wavelength_selectbox',...
+            Andor_window_handle);
+        grating_selectbox = find_ui_handle('grating_selectbox',...
+            Andor_window_handle);
+
         update_andor_output('Connected to Andor')
-        %check and synchronize status of chiller
+        % check and synchronize chiller status
         [ret,Cstat] = IsCoolerOn;
         setappdata(main,'AndorFlag',1)
         if(Cstat)
             %chiller is already on
-            set(localhandles(16),'value',1,'string','Cooler ON')
+            set(acooler,'value',1,'string','Cooler ON')
             
             %check and initalize temperature of chiller if it is on
             [ret, SensorTemp, TargetTemp, AmbientTemp, CoolerVolts] = GetTemperatureStatus();
-            localhandles(13).String = [num2str(SensorTemp) '°C'];
-            localhandles(14).String = [num2str(TargetTemp) '°C'];
+            acooleractualtext.String = [num2str(SensorTemp) '°C'];
+            acoolersettext.String = [num2str(TargetTemp) '°C'];
         else
             %chiller is off
             %do nothing
         end
         
-        localhandles(10).Enable = 'on';
+        aloop_scan.Enable = 'on';
         
-        if(localhandles(11).Value==1)
+        if(astatus_selectbox.Value==1)
             %single scan mode
-            localhandles(5).Enable = 'off';
-            localhandles(7).Enable = 'off';
+            a_kincyctime.Enable = 'off';
+            a_numkinseries.Enable = 'off';
             [ret] = SetAcquisitionMode(1); % Set acquisition mode; 1 for single scan
             CheckWarning(ret);
             update_andor_output('Set up Single Scan')
-            [ret] = SetExposureTime(str2num(localhandles(9).String)); % Set exposure time in second
+            [ret] = SetExposureTime(str2num(a_integrationtime.String)); % Set exposure time in second
             CheckWarning(ret);
-            update_andor_output(['Exposure Time: ' localhandles(9).String ' s'])
-        elseif(localhandles(11).Value==2)
+            update_andor_output(['Exposure Time: ' a_integrationtime.String ' s'])
+        elseif(astatus_selectbox.Value==2)
             %kinetic series mode
-            localhandles(5).Enable = 'on';
-            localhandles(7).Enable = 'on';
+            a_kincyctime.Enable = 'on';
+            a_numkinseries.Enable = 'on';
             [ret] = SetAcquisitionMode(3); % Set acquisition mode; 3 for Kinetic Series
             CheckWarning(ret);
             update_andor_output('Set up Kinetic Series')
             
-            [ret] = SetNumberKinetics(str2num(localhandles(7).String));
+            [ret] = SetNumberKinetics(str2num(a_numkinseries.String));
             CheckWarning(ret);
-            update_andor_output(['Length of Kinetic Series: ' localhandles(7).String])
+            update_andor_output(['Length of Kinetic Series: ' a_numkinseries.String])
             
-            [ret] = SetExposureTime(str2num(localhandles(9).String)); % Set exposure time in second
+            [ret] = SetExposureTime(str2num(a_integrationtime.String)); % Set exposure time in second
             CheckWarning(ret);
-            update_andor_output(['Exposure Time: ' localhandles(9).String ' s'])
+            update_andor_output(['Exposure Time: ' a_integrationtime.String ' s'])
             
-            [ret] = SetKineticCycleTime(str2num(localhandles(5).String)); %set kinetic cycle time
+            [ret] = SetKineticCycleTime(str2num(a_kincyctime.String)); %set kinetic cycle time
             CheckWarning(ret);
-            update_andor_output(['Cycle Time: ' localhandles(5).String ' s'])
+            update_andor_output(['Cycle Time: ' a_kincyctime.String ' s'])
         end
         
         [ret] = SetReadMode(0); % Set read mode; 0 for FVP
@@ -3383,11 +3405,10 @@ build_hygrometer_window(window_visibility_default(6));
             return
         else
             update_andor_output('Connected to Shamrock')
-            localhandles(1).Enable = 'on';
-            localhandles(2).Enable = 'on';
-            localhandles(12).Enable = 'on';
+            center_wavelength_selectbox.Enable = 'on';
+            grating_selectbox.Enable = 'on';
+            aaqdata.Enable = 'on';
         end
-        
         
         [ret,currentgrating] = ShamrockGetGrating(0);
         [ret,currentcenter] = ShamrockGetWavelength(0);
@@ -3398,17 +3419,17 @@ build_hygrometer_window(window_visibility_default(6));
         setappdata(main,'ShamrockXCal',Xcal);
         
         %and update the drop down to show correct center wavelength and grating
-        localhandles(1).Value = (round(currentcenter,-1)-350)/50;
-        localhandles(2).Value = currentgrating;
+        center_wavelength_selectbox.Value = (round(currentcenter,-1)-350)/50;
+        grating_selectbox.Value = currentgrating;
         
     end
 
     function update_andor_output(newstring)
-        localhandles = get_figure_handles(Andor_window_handle);
         %add the string
-        localhandles(3).String{end+1} = newstring;
+        a_textreadout = find_ui_handle('a_textreadout',Andor_window_handle);
+        a_textreadout.String{end+1} = newstring;
         %make sure box isn't over full
-        localhandles(3).String = localhandles(3).String(max([1 end-9]):end);
+        a_textreadout.String = a_textreadout.String(max([1 end-9]):end);
     end
 
     function change_andor_exposure_time(source,eventdata)
@@ -3461,7 +3482,6 @@ build_hygrometer_window(window_visibility_default(6));
         end
     end
 
-
     function change_andor_kinetic_length(source,eventdata)
         temp = getappdata(main);
         if(~temp.AndorFlag)
@@ -3487,7 +3507,9 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function change_andor_acquisition(source,eventdata)
-        localhandles = get_figure_handles(Andor_window_handle);
+        ax11 = find_ui_handle('ax11',Andor_window_handle);
+        a_kincyctime = find_ui_handle('a_kincyctime',Andor_window_handle);
+        a_numkinseries = find_ui_handle('a_numkinseries',Andor_window_handle);
         temp = getappdata(main);
         if(~temp.AndorFlag)
             update_andor_output('Connect to Andor First!')
@@ -3503,17 +3525,17 @@ build_hygrometer_window(window_visibility_default(6));
         if(get(source,'value')==1)
             [ret] = SetAcquisitionMode(1); % Set acquisition mode; 1 for single scan
             CheckWarning(ret);
-            localhandles(5).Enable = 'off';
-            localhandles(7).Enable = 'off';
+            a_kincyctime.Enable = 'off';
+            a_numkinseries.Enable = 'off';
             update_andor_output('Set to single scan mode')
         elseif(get(source,'value')==2)
-            localhandles(5).Enable = 'on';
-            localhandles(7).Enable = 'on';
+            a_kincyctime.Enable = 'on';
+            a_numkinseries.Enable = 'on';
             [ret] = SetAcquisitionMode(3); % Set acquisition mode; 3 for Kinetic Series
             CheckWarning(ret);
             update_andor_output('Set to kinetic series mode')
         end
-        cla(localhandles(19))
+        cla(ax11)
     end
 
     function andor_disconnect(source,eventdata)
@@ -3533,11 +3555,16 @@ build_hygrometer_window(window_visibility_default(6));
         update_andor_output('Disconnected from Andor')
         ShamrockClose();
         update_andor_output('Disconnected from Shamrock')
-        localhandles = get_figure_handles(Andor_window_handle);
-        localhandles(1).Enable = 'off';
-        localhandles(2).Enable = 'off';
-        localhandles(10).Enable = 'on';
-        localhandles(12).Enable = 'off';
+        aloop_scan = find_ui_handle('aloop_scan',Andor_window_handle);
+        aaqdata = find_ui_handle('aaqdata',Andor_window_handle);
+        center_wavelength_selectbox = find_ui_handle('center_wavelength_selectbox',...
+            Andor_window_handle);
+        grating_selectbox = find_ui_handle('grating_selectbox',...
+            Andor_window_handle);
+        center_wavelength_selectbox.Enable = 'off';
+        grating_selectbox.Enable = 'off';
+        aloop_scan.Enable = 'on';
+        aaqdata.Enable = 'off';
     end
 
     function andor_abort_sub(source,eventdata)
@@ -3552,18 +3579,22 @@ build_hygrometer_window(window_visibility_default(6));
 
     function andor_chiller_power(source,eventdata)
         %when turning on
-        localhandles = get_figure_handles(Andor_window_handle);
         if(get(source,'value'))
             [ret] = CoolerON();
             CheckError(ret);
             source.String = 'Cooler On';
             %send setpoint temperature to chiller
-            [ret] = SetTemperature(str2num(localhandles(15).String));
+            acoolerset = find_ui_handle('acoolerset',Andor_window_handle);
+            [ret] = SetTemperature(str2num(acoolerset.String));
             CheckError(ret);
             %check and initalize temperature of chiller if it is on
             [ret, SensorTemp, TargetTemp, AmbientTemp, CoolerVolts] = GetTemperatureStatus();
-            localhandles(13).String = [num2str(SensorTemp,'%3.1f') '°C'];
-            localhandles(14).String = [num2str(TargetTemp,'%3.f') '°C'];
+            acooleractualtext = find_ui_handle('acooleractualtext',...
+                Andor_window_handle);
+            acoolersettext = find_ui_handle('acoolersettext',...
+                Andor_window_handle);
+            acooleractualtext.String = [num2str(SensorTemp,'%3.1f') '°C'];
+            acoolersettext.String = [num2str(TargetTemp,'%3.f') '°C'];
         else
             [ret] = CoolerOFF();
             CheckError(ret);
@@ -3571,9 +3602,9 @@ build_hygrometer_window(window_visibility_default(6));
         end
     end
 
-
     function andor_set_chiller_temp(source,eventdata)
-        localhandles = get_figure_handles(Andor_window_handle);
+        acoolersettext = find_ui_handle('acoolersettext',...
+            Andor_window_handle);
         T = str2num(source.String);
         %force T to reasonable range
         if(T<-60)
@@ -3585,16 +3616,18 @@ build_hygrometer_window(window_visibility_default(6));
             source.String = '-60';
             return
         end
-        localhandles(14).String = [num2str(T,'%3.f') '°C'];
+        acoolersettext.String = [num2str(T,'%3.f') '°C'];
         [ret] = SetTemperature(T);
         CheckError(ret)
     end
 
     function update_Andor_values()
-        localhandles = get_figure_handles(Andor_window_handle);
         [ret, SensorTemp, TargetTemp, AmbientTemp, CoolerVolts] = GetTemperatureStatus();
-        localhandles(13).String = [num2str(SensorTemp,'%3.1f') '°C'];
-        localhandles(14).String = [num2str(TargetTemp,'%3.f') '°C'];
+        acooleractualtext = find_ui_handle('acooleractualtext',...
+            Andor_window_handle);
+        acoolersettext = find_ui_handle('acoolersettext',Andor_window_handle);
+        acooleractualtext.String = [num2str(SensorTemp,'%3.1f') '°C'];
+        acoolersettext.String = [num2str(TargetTemp,'%3.f') '°C'];
     end
 
     function change_andor_wavelength(source,eventdata)
@@ -3628,11 +3661,10 @@ build_hygrometer_window(window_visibility_default(6));
         stop(fasttimer)
         stop(errorcatchtimer)
         pause(0.25)
-        localhandles = get_figure_handles(Andor_window_handle);
+        astatus_selectbox = find_ui_handle('astatus_selectbox',...
+            Andor_window_handle);
         [ret] = SetShutter(1, 0, 1, 1); % auto Shutter
         CheckWarning(ret);
-        
-        
         
         %retrieve Xpixel data
         temp = getappdata(main);
@@ -3663,14 +3695,15 @@ build_hygrometer_window(window_visibility_default(6));
             setappdata(main,'AndorTimestamp',temp.AndorTimestamp)
         end
         
-        
         [ret] = StartAcquisition();
         CheckWarning(ret);
         update_andor_output('Starting Acquisition')
         
         [ret,exposed_time,~,cycle_time] = GetAcquisitionTimings;
-        if(localhandles(11).Value==2) %kinetic scan
-            number_exposure = str2num(localhandles(7).String);
+        if(astatus_selectbox.Value==2) %kinetic scan
+            a_numkinseries = find_ui_handle('a_numkinseries',...
+                Andor_window_handle);
+            number_exposure = str2num(a_numkinseries.String);
         else
             number_exposure = 1;
         end
@@ -3699,12 +3732,13 @@ build_hygrometer_window(window_visibility_default(6));
 
     function get_andor_data(source,eventdata)
         temp = getappdata(main);
-        localhandles = get_figure_handles(Andor_window_handle);
+        astatus_selectbox = find_ui_handle('astatus_selectbox',...
+            Andor_window_handle);
         
         %get the number of available frames, if any
         [ret,firstimage_ind,lastimage_ind] = GetNumberNewImages;
         %get newest image when "SUCCESS" is returned
-        if(localhandles(11).Value==1&&ret==atmcd.DRV_SUCCESS)
+        if(astatus_selectbox.Value==1&&ret==atmcd.DRV_SUCCESS)
             %single scans
             [ret,AndorImage] = GetOldestImage(2000);
             %convert to unsigned 16 bit image to save space
@@ -3713,7 +3747,8 @@ build_hygrometer_window(window_visibility_default(6));
                 %no new data
                 return
             end
-            if(localhandles(10).Value)
+            aloop_scan = find_ui_handle('aloop_scan',Andor_window_handle);
+            if(aloop_scan.Value)
                 %if loop scan is checked, restart the acq.
                 andor_aqdata(source,eventdata);
             else
@@ -3731,7 +3766,7 @@ build_hygrometer_window(window_visibility_default(6));
                 temp.AndorImage = uint16(temp.AndorImage);
             end
             setappdata(main,'AndorImage',temp.AndorImage);
-        elseif(localhandles(11).Value==2&&ret==atmcd.DRV_SUCCESS)
+        elseif(astatus_selectbox.Value==2&&ret==atmcd.DRV_SUCCESS)
             if(~isa(temp.AndorImage,'uint16'))
                 temp.AndorImage = uint16(temp.AndorImage);
             end
@@ -3750,8 +3785,6 @@ build_hygrometer_window(window_visibility_default(6));
                 update_andor_output(['Aquisition complete'])
             end
         end
-        
-        
     end
 
     function update_andor_plot_1D(axishandle)
@@ -3766,7 +3799,6 @@ build_hygrometer_window(window_visibility_default(6));
                 return
             end
         end
-        localhandles = get_figure_handles(Andor_window_handle);
         cla(axishandle)
         AndorImage = temp.AndorImage(:,end);
         set(axishandle, 'XTickMode', 'auto', 'XTickLabelMode', 'auto')
@@ -3787,7 +3819,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function update_andor_plot_2D()
         two_d_plottime = tic;
-        localhandles = get_figure_handles(Andor_window_handle);
+        ax11 = find_ui_handle('ax11',Andor_window_handle);
         temp = getappdata(main);
         start_ind = max([temp.AndorImage_startpointer+1 1]);
         if(isempty(temp.AndorImage))
@@ -3812,8 +3844,6 @@ build_hygrometer_window(window_visibility_default(6));
             Image_w_gaps = [Image_w_gaps(:,1:i) ones(size(Y')).*1300 Image_w_gaps(:,i+1:end)];
         end
         
-        
-        
         if(0)
             fitX = (1:2000)';
             %this is some sort of filter but TBH I have no idea how it works
@@ -3836,76 +3866,88 @@ build_hygrometer_window(window_visibility_default(6));
         else
             plotdata = (Image_w_gaps);
         end
-        h = pcolor(localhandles(end),X,Y,plotdata);
+        h = pcolor(ax11,X,Y,plotdata);
         set(h,'linestyle','none');
         new_climits = [max([ min(min(prctile(single(plotdata),[10 95]))) 1000]) ...
             min([max(max(prctile(single(plotdata),[10 95]))) 1500])];
         
-        
-        set(localhandles(end),'CLimMode','manual','CLim',new_climits)
-        datetick(localhandles(end),'x','HH:MM')
-        xlabel(localhandles(end),'Time (HH:MM)')
-        ylabel(localhandles(end),'Wavelength (nm)')
+        set(ax11,'CLimMode','manual','CLim',new_climits)
+        datetick(ax11,'x','HH:MM')
+        xlabel(ax11,'Time (HH:MM)')
+        ylabel(ax11,'Wavelength (nm)')
         toc(two_d_plottime);
     end
 
     function Andor_Realtime(source,eventdata)
-       runloop = source.Value;
-       temp = getappdata(main);
-       localhandles = get_figure_handles(Andor_window_handle);
-          localhandles(1).Enable = 'off';
-          localhandles(2).Enable = 'off';
-          localhandles(5).Enable = 'off';
-          localhandles(7).Enable = 'off';
-          localhandles(9).Enable = 'off';
-          localhandles(11).Enable = 'off';
-          localhandles(12).Enable = 'off';
+        runloop = source.Value;
+        temp = getappdata(main);
+        astatus_selectbox = find_ui_handle('astatus_selectbox',...
+           Andor_window_handle);
+        a_kincyctime = find_ui_handle('a_kincyctime',Andor_window_handle);
+        a_numkinseries = find_ui_handle('a_numkinseries',Andor_window_handle);
+        a_integrationtime = find_ui_handle('a_integrationtime',...
+           Andor_window_handle);
+        aaqdata = find_ui_handle('aaqdata',Andor_window_handle);
+        center_wavelength_selectbox = find_ui_handle('center_wavelength_selectbox',...
+           Andor_window_handle);
+        grating_selectbox = find_ui_handle('grating_selectbox',...
+           Andor_window_handle);
+        ax11 = find_ui_handle('ax11',Andor_window_handle);
+        center_wavelength_selectbox.Enable = 'off';
+        grating_selectbox.Enable = 'off';
+        a_kincyctime.Enable = 'off';
+        a_numkinseries.Enable = 'off';
+        a_integrationtime.Enable = 'off';
+        astatus_selectbox.Enable = 'off';
+        aaqdata.Enable = 'off';
 
-          if(runloop)
-              %ensure auto shutter
-              [ret] = SetShutter(1, 0, 1, 1); % Auto Shutter
-          end
-        while(runloop)
-
-
-           disp([datestr(now) ' Andor Realtime'])
-           pause(0.01)
-           
-           [ret] = StartAcquisition();
-           CheckWarning(ret);
-           
-           [ret,gstatus] = AndorGetStatus;
-           CheckWarning(ret);
-           while(gstatus ~= atmcd.DRV_IDLE)
-               pause(0.25);
-               disp('Acquiring');
-               [ret,gstatus] = AndorGetStatus;
-               CheckWarning(ret);
-           end
-           
-           
-           [ret, imageData] = GetMostRecentImage(2000);
-           CheckWarning(ret);
-           
-           plot(localhandles(end),temp.ShamrockXCal,imageData)
-           new_ylimits = prctile(single(imageData),[10 90]);
-           new_ylimits(1) = new_ylimits(1)-10;
-           new_ylimits(2) = new_ylimits(2)+20;
-           set(localhandles(end),'ylim',new_ylimits);
-           
-           
-           runloop = localhandles(10).Value;
+        if(runloop)
+          %ensure auto shutter
+          [ret] = SetShutter(1, 0, 1, 1); % Auto Shutter
         end
-       
 
-        localhandles(5).Enable = 'on';
-        localhandles(7).Enable = 'on';
-        localhandles(9).Enable = 'on';
-        localhandles(11).Enable = 'on';
+        while(runloop)
+            disp([datestr(now) ' Andor Realtime'])
+            pause(0.01)
+
+            [ret] = StartAcquisition();
+            CheckWarning(ret);
+
+            [ret,gstatus] = AndorGetStatus;
+            CheckWarning(ret);
+            while(gstatus ~= atmcd.DRV_IDLE)
+                pause(0.25);
+                disp('Acquiring');
+                [ret,gstatus] = AndorGetStatus;
+                CheckWarning(ret);
+            end
+
+            [ret, imageData] = GetMostRecentImage(2000);
+            CheckWarning(ret);
+
+            plot(ax11,temp.ShamrockXCal,imageData)
+            new_ylimits = prctile(single(imageData),[10 90]);
+            new_ylimits(1) = new_ylimits(1)-10;
+            new_ylimits(2) = new_ylimits(2)+20;
+            set(ax11,'ylim',new_ylimits);
+
+            aloop_scan = find_ui_handle('aloop_scan',Andor_window_handle);
+            runloop = aloop_scan.Value;
+        end
+
+        a_kincyctime.Enable = 'on';
+        a_numkinseries.Enable = 'on';
+        a_integrationtime.Enable = 'on';
+        astatus_selectbox.Enable = 'on';
         if(temp.AndorFlag)
-            localhandles(1).Enable = 'on';
-            localhandles(2).Enable = 'on';
-            localhandles(12).Enable = 'on';
+            center_wavelength_selectbox = find_ui_handle('center_wavelength_selectbox',...
+                Andor_window_handle);
+            grating_selectbox = find_ui_handle('grating_selectbox',...
+                Andor_window_handle);
+            aaqdata = find_ui_handle('aaqdata',Andor_window_handle);
+            center_wavelength_selectbox.Enable = 'on';
+            grating_selectbox.Enable = 'on';
+            aaqdata.Enable = 'on';
         end
         
     end
@@ -4031,6 +4073,7 @@ build_hygrometer_window(window_visibility_default(6));
     function update_hygrometer_plot()
         temp = getappdata(main);
         localhandles = get_figure_handles(hygrometer_window_handle);
+        a_textreadout = find_ui_handle('a_textreadout',Andor_window_handle);
         
         if(size(temp.hygrometer_data,1)>=2)
             plot(localhandles(4),temp.hygrometer_data(:,1),temp.hygrometer_data(:,2),'.',...
@@ -4042,12 +4085,10 @@ build_hygrometer_window(window_visibility_default(6));
             datetick(localhandles(4),'x','DD HH')
         end
         
-        localhandles(3).String = [datestr(temp.hygrometer_data(end,1))...
+        a_textreadout.String = [datestr(temp.hygrometer_data(end,1))...
             ' Hygrometer: ' num2str(temp.hygrometer_data(end,2)) ...
             '°C; Thy: ' num2str(temp.hygrometer_data(end,3),'%.2f') '°C'];
         
     end
 
 end
-
-
