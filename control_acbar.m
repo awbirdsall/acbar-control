@@ -1032,7 +1032,9 @@ build_hygrometer_window(window_visibility_default(6));
             'position',[120 10 100 20],...
             'callback',@hygrometer_comms,'tag','hygrometer');
         
-        ax20 = axes('parent',hygrometer_window_handle,'position',[0.15 0.25 0.8 0.7]);
+        ax20 = axes('parent',hygrometer_window_handle,...
+            'position',[0.15 0.25 0.8 0.7],...
+            'tag','ax20');
         set(ax20,'nextplot','replacechildren');
         set(ax20,'xtickmode','auto')
         set(ax20,'xlimmode','auto')
@@ -1574,10 +1576,6 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
 %% functions that actually do stuff for all subprograms
-    function localhandles = get_figure_handles(handlein)
-        localhandles = get(handlein,'children');
-    end
-
     function wait_a_second(handlein)
         set(handlein ,'pointer','watch')
     end
@@ -3956,25 +3954,21 @@ build_hygrometer_window(window_visibility_default(6));
 
     function hygrometer_comms(source,eventdata)
         
-        localhandles = get_figure_handles(hygrometer_window_handle);
+        hygrometer_selectbox = find_ui_handle('hygrometer_selectbox',...
+            hygrometer_window_handle);
+        hygrometer_openclose = find_ui_handle('hygrometer_openclose',...
+            hygrometer_window_handle);
         if(source.Value)
             %open the connection
-            
             %determine which port is selected
-            
-            
-            portID = localhandles(2).String{localhandles(2).Value};
-            
+            portID = hygrometer_selectbox.String{hygrometer_selectbox.Value};
             obj3 = instrfind('Type', 'serial', 'Port', portID, 'Tag', '');
-            
             if(isempty(obj3))
                 obj3 = serial(portID);
             else
                 fclose(obj3);
                 obj3 = obj3(1);
             end
-            
-            
             
             obj3.Terminator = {'CR/LF','CR'};
             obj3.BaudRate = 38400;
@@ -3988,13 +3982,10 @@ build_hygrometer_window(window_visibility_default(6));
             c = fscanf(obj3);
             d = fscanf(obj3);
             
-            
-            
             setappdata(main,'Hygrometer_comms',obj3)
             
-            localhandles(2).Enable = 'off';
-            localhandles(1).String = 'Port Open';
-            
+            hygrometer_selectbox.Enable = 'off';
+            hygrometer_openclose.String = 'Port Open';
         else
             %close the connection
             temp = getappdata(main);
@@ -4004,14 +3995,10 @@ build_hygrometer_window(window_visibility_default(6));
                 rmappdata(main,'Hygrometer_comms');
             else
                 %do nothing
-                
             end
-            
-            localhandles(2).Enable = 'on';
-            localhandles(1).String = 'Port Closed';
-            
+            hygrometer_selectbox.Enable = 'on';
+            hygrometer_openclose.String = 'Port Closed';
         end
-        
     end
 
     function force_hygrometer_normal()
@@ -4024,11 +4011,9 @@ build_hygrometer_window(window_visibility_default(6));
         end
     end
 
-
     function update_hygrometer_data()
         
         temp = getappdata(main);
-        
         
         flushinput(temp.Hygrometer_comms)
         fprintf(temp.Hygrometer_comms,'$GETDATA 0')
@@ -4072,23 +4057,20 @@ build_hygrometer_window(window_visibility_default(6));
 
     function update_hygrometer_plot()
         temp = getappdata(main);
-        localhandles = get_figure_handles(hygrometer_window_handle);
+        ax20 = find_ui_handle('ax20',hygrometer_window_handle);
         a_textreadout = find_ui_handle('a_textreadout',Andor_window_handle);
         
         if(size(temp.hygrometer_data,1)>=2)
-            plot(localhandles(4),temp.hygrometer_data(:,1),temp.hygrometer_data(:,2),'.',...
+            plot(ax20,temp.hygrometer_data(:,1),temp.hygrometer_data(:,2),'.',...
                 temp.hygrometer_data(:,1),temp.hygrometer_data(:,3),'o')
             
-            
-            ylabel(localhandles(4),'Td ^\circ C')
-            xlabel(localhandles(4),'Time DD HH')
-            datetick(localhandles(4),'x','DD HH')
+            ylabel(ax20,'Td ^\circ C')
+            xlabel(ax20,'Time DD HH')
+            datetick(ax20,'x','DD HH')
         end
         
         a_textreadout.String = [datestr(temp.hygrometer_data(end,1))...
             ' Hygrometer: ' num2str(temp.hygrometer_data(end,2)) ...
             '°C; Thy: ' num2str(temp.hygrometer_data(end,3),'%.2f') '°C'];
-        
     end
-
 end
