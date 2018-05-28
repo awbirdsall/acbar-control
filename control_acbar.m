@@ -610,7 +610,7 @@ build_hygrometer_window(window_visibility_default(6));
             'tag','burst_pushbutton');
         
         inject_display = uicontrol(arduino_window_handle,'style','text',...
-            'string','0','position',[325 10 150 20],...
+            'string','0','position',[325 10 200 20],...
             'tag','inject_display');
         
         %check which serial ports are available
@@ -2411,15 +2411,14 @@ build_hygrometer_window(window_visibility_default(6));
     % BURST  Send burst command of 20 drops to Arduino and display timestamp.
 
         temp = getappdata(main);
+        inject_display = find_ui_handle('inject_display',...
+            arduino_window_handle);
         % send command
         data2 = query(temp.arduino_comm,'1');
         % read remaining 19 lines returned from Arduino ("1","2",...,"19")
         for i = 1:19
             data2 = fgets(temp.arduino_comm);
         end
-        % update display
-        inject_display = find_ui_handle('inject_display',...
-            arduino_window_handle);
         set(inject_display,'string',[datestr(now) ' Burst'])
     end
 
@@ -2448,10 +2447,19 @@ build_hygrometer_window(window_visibility_default(6));
             highbits = bitand(allbits,bin2dec('111100000000'));
             firstbyte = setpointflag + bitshift(highbits,-8);
             secondbyte = bitand(allbits,bin2dec('000011111111'));
+
             % send bytes to arduino. It's important they're sent as single
             % bytes, without any newline character!
+            % also read expected responses from arduino. Don't do anything with
+            % the responses except remove from the input buffer.
             fwrite(temp.arduino_comm,firstbyte);
+            % expect to receive "First 4 dac bits"
+            fgets(temp.arduino_comm)
+
             fwrite(temp.arduino_comm,secondbyte);
+            % expect to receive "Last 8 dac bits" and "dacSetpoint: xxxx"
+            fgets(temp.arduino_comm)
+            fgets(temp.arduino_comm)
         else
             ME = MException('set_dc:voltageOutOfRange', ...
                 'voltage setpoint out of range');
