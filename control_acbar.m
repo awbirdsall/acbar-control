@@ -283,27 +283,6 @@ build_hygrometer_window(window_visibility_default(6));
         %check which serial ports are available
         serialinfo = instrhwinfo('serial');
         
-        % no longer connect to SRS function generator for the DC signal.
-        % Keep invisible 'SRS1' uicontrol elements for now to avoid messing
-        % up number-based indexing of elements in microscope_window_handle
-        % elsewhere in the code.
-        SRS1label = uicontrol(microscope_window_handle,'style','text',...
-            'String','DC Fcn Generator',...
-            'position',[525 250 100 20],'visible','off',...
-            'tag','SRS1label');
-        
-        SRS1selectbox = uicontrol(microscope_window_handle,'style','popupmenu',...
-            'String',serialinfo.AvailableSerialPorts,...
-            'position',[650 250 100 20],'visible','off',...
-            'tag','SRS1selectbox');
-
-        SRS1openclose=uicontrol(microscope_window_handle,'style','togglebutton',...
-            'String','Port Closed','Value',0,...
-            'position',[775 250 100 20],...
-            'visible','off',...
-            'tag','SRS1openclose');
-        % end of unused, invisible SRS1 elements
-        
         SRS2label = uicontrol(microscope_window_handle,'style','text',...
             'String','AC Fcn Generator',...
             'position',[525 220 100 20],...
@@ -426,6 +405,16 @@ build_hygrometer_window(window_visibility_default(6));
             'value',0,'position',[10 250 140 20],...
             'callback',@microscope_auto_gain,...
             'tag','mgain_auto');
+
+        % particle injection
+        eject_button = uicontrol(microscope_window_handle,'style','pushbutton',...
+            'position',[750 30 80 20],'string','eject particle',...
+            'callback',@eject_particle,'tag','eject_button',...
+            'enable','off');
+
+        eject_length = uicontrol(microscope_window_handle,'style','edit',...
+            'string','','position',[750 10 100 20],...
+            'tag','eject_length');
         
     end
 
@@ -2454,12 +2443,12 @@ build_hygrometer_window(window_visibility_default(6));
             % the responses except remove from the input buffer.
             fwrite(temp.arduino_comm,firstbyte);
             % expect to receive "First 4 dac bits"
-            fgets(temp.arduino_comm)
+            fgets(temp.arduino_comm);
 
             fwrite(temp.arduino_comm,secondbyte);
             % expect to receive "Last 8 dac bits" and "dacSetpoint: xxxx"
-            fgets(temp.arduino_comm)
-            fgets(temp.arduino_comm)
+            fgets(temp.arduino_comm);
+            fgets(temp.arduino_comm);
         else
             ME = MException('set_dc:voltageOutOfRange', ...
                 'voltage setpoint out of range');
@@ -2493,7 +2482,7 @@ build_hygrometer_window(window_visibility_default(6));
             microscope_window_handle);
         ac_buttons = {'AC FREQ +10','AC FREQ +1','AC FREQ +0.1',...
             'AC FREQ -10','AC FREQ -1','AC FREQ -0.1','AC AMP  +0.1',...
-            'AC AMP  -0.1'};
+            'AC AMP  -0.1','eject_button'};
         if(get(source,'value'))
             stop(fasttimer)
 
@@ -2597,6 +2586,21 @@ build_hygrometer_window(window_visibility_default(6));
         new_freq = old_freq+freq_increment;
         set_ac_freq(new_freq);
     end
+
+    function eject_particle(source,eventdata)
+    % EJECT_PARTICLE  Set AC amplitude to 0 for user-defined amount of time.
+
+        eject_length = find_ui_handle('eject_length',microscope_window_handle);
+        eject_time = str2double(eject_length.String);
+        current_ac_amp = getappdata(main,'amp_ac_trap');
+
+        set_ac_amp(0);
+
+        pause(eject_time);
+
+        set_ac_amp(current_ac_amp);
+    end
+
 
 %% functions that actually do stuff for the MKS and Lauda board
 
