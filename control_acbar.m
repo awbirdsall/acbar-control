@@ -72,7 +72,7 @@ uicontrol(main,'style','text','string','Window visibility',...
 labels = {'microscope','fringe','arduino','mks','andor','hygrometer'};
 % startup visibility of each window, used to set both initial checkbox
 % state as well as the actual visibility in build_fringe_window, etc.
-window_visibility_default = [1,1,1,0,0,0];
+window_visibility_default = [1,1,1,1,0,0];
 for i = 1:6
     % generate tag for new checkbox
     checkbox_tag = strcat(labels{i},'_checkbox');
@@ -717,12 +717,17 @@ build_hygrometer_window(window_visibility_default(6));
         Julabo_reported_T = uicontrol(MKS_window_handle,'style','text',...
             'position',[450 200 100 20],'String','T: ?',...
             'tag','Julabo_reported_T');
+
+        mks_selectbox_label = uicontrol(MKS_window_handle,'style','text',...
+            'String','MFC controller',...
+            'position',[10 265 100 20],...
+            'tag','mks_selectbox_label');
         
         MKSselectbox = uicontrol(MKS_window_handle,'style','popupmenu',...
             'String',serialinfo.AvailableSerialPorts,...
             'position',[10 250 100 20],...
             'tag','MKSselectbox');
-        
+
         MKSopenclose = uicontrol(MKS_window_handle,'style','togglebutton',...
             'String','Port Closed','Value',0,...
             'position',[120 250 100 20],...
@@ -763,7 +768,7 @@ build_hygrometer_window(window_visibility_default(6));
             'tag','MKSresponse');
         
         
-        bg3 = uibuttongroup(MKS_window_handle,'Position',[0 0.05 .15 .5],...
+        bg3 = uibuttongroup(MKS_window_handle,'Position',[0 0.05 .18 .5],...
             'title','Dry CH3','SelectionChangeFcn',@MKS_mode,'tag','bg3');
         
         % Create three radio buttons in the button group.
@@ -794,8 +799,37 @@ build_hygrometer_window(window_visibility_default(6));
             'position',[10 95 65 20],'string','? sccm',...
             'tag','mks3act');
 
-        
-        bg4 = uibuttongroup(MKS_window_handle,'Position',[0.17 0.05 .15 .5],...
+        mks3_plus25 = uicontrol(bg3,'style','pushbutton',...
+            'position',[80 115 40 20],'string','+25',...
+            'enable','off','tag','mks3_plus25',...
+            'callback',{@mks_increment,3,25});
+
+        mks3_plus5 = uicontrol(bg3,'style','pushbutton',...
+            'position',[80 93 40 20],'string','+5',...
+            'enable','off','tag','mks3_plus5',...
+            'callback',{@mks_increment,3,5});
+
+        mks3_plus1 = uicontrol(bg3,'style','pushbutton',...
+            'position',[80 69 40 20],'string','+1',...
+            'enable','off','tag','mks3_plus1',...
+            'callback',{@mks_increment,3,1});
+
+        mks3_minus1 = uicontrol(bg3,'style','pushbutton',...
+            'position',[80 46 40 20],'string','-1',...
+            'enable','off','tag','mks3_minus1',...
+            'callback',{@mks_increment,3,-1});
+
+        mks3_minus5 = uicontrol(bg3,'style','pushbutton',...
+            'position',[80 23 40 20],'string','-5',...
+            'enable','off','tag','mks3_minus5',...
+            'callback',{@mks_increment,3,-5});
+
+        mks3_minus25 = uicontrol(bg3,'style','pushbutton',...
+            'position',[80 0 40 20],'string','-25',...
+            'enable','off','tag','mks3_minus25',...
+            'callback',{@mks_increment,3,-25});
+
+        bg4 = uibuttongroup(MKS_window_handle,'Position',[0.19 0.05 .18 .5],...
             'title','Humid CH4','SelectionChangeFcn',@MKS_mode,'tag','bg4');
         
         % Create three radio buttons in the button group.
@@ -826,9 +860,39 @@ build_hygrometer_window(window_visibility_default(6));
             'position',[10 95 65 20],'string','? sccm',...
             'tag','mks4act');
         
+        mks4_plus25 = uicontrol(bg4,'style','pushbutton',...
+            'position',[80 115 40 20],'string','+25',...
+            'enable','off','tag','mks4_plus25',...
+            'callback',{@mks_increment,4,25});
+
+        mks4_plus5 = uicontrol(bg4,'style','pushbutton',...
+            'position',[80 93 40 20],'string','+5',...
+            'enable','off','tag','mks4_plus5',...
+            'callback',{@mks_increment,4,5});
+
+        mks4_plus1 = uicontrol(bg4,'style','pushbutton',...
+            'position',[80 69 40 20],'string','+1',...
+            'enable','off','tag','mks4_plus1',...
+            'callback',{@mks_increment,4,1});
+
+        mks4_minus1 = uicontrol(bg4,'style','pushbutton',...
+            'position',[80 46 40 20],'string','-1',...
+            'enable','off','tag','mks4_minus1',...
+            'callback',{@mks_increment,4,-1});
+
+        mks4_minus5 = uicontrol(bg4,'style','pushbutton',...
+            'position',[80 23 40 20],'string','-5',...
+            'enable','off','tag','mks4_minus5',...
+            'callback',{@mks_increment,4,-5});
+
+        mks4_minus25 = uicontrol(bg4,'style','pushbutton',...
+            'position',[80 0 40 20],'string','-25',...
+            'enable','off','tag','mks4_minus25',...
+            'callback',{@mks_increment,4,-25});
+
         hum_table = uitable(MKS_window_handle,'Data',[0 -999 -999 -999 -999],'ColumnWidth',{77},...
             'ColumnEditable', [true true true true true],...
-            'position',[250 10 440 150],...
+            'position',[265 10 425 150],...
             'ColumnName',{'Time (Hr)','Trap (°C)','RH (%)','Total (sccm)','Hookah (°C)'},...
             'celleditcallback',@edit_table,...
             'tag','hum_table');
@@ -1063,11 +1127,12 @@ build_hygrometer_window(window_visibility_default(6));
             % drill down through cell array of nested tag strings
             nested_handle = parent_handle;
             for nested_tag = tag
-                nested_handle = findobj(nested_handle,'-depth',1,...
+                old_handle = nested_handle;
+                nested_handle = findobj(old_handle,'-depth',1,...
                     'tag',nested_tag{:});
                 if isempty(nested_handle)
-                    msgtext = ['Did not find element with tag ', nested_tag,...
-                        ' in parent ' nested_handle.Tag];
+                    msgtext = ['Did not find element with tag ', nested_tag{:},...
+                        ' in parent ', old_handle.Tag];
                     ME = MException('find_ui_handle:lookupFailure',msgtext);
                     throw(ME);
                 end
@@ -2952,8 +3017,10 @@ build_hygrometer_window(window_visibility_default(6));
     %
     %   Serial object is set to main.MKS946_comm.
 
-        mks3sp = find_ui_handle({'bg3','3'},MKS_window_handle);
-        mks4sp = find_ui_handle({'bg4','4'},MKS_window_handle);
+        bg3_toggleable = {'3','mks3_plus25','mks3_plus5','mks3_plus1',...
+            'mks3_minus1','mks3_minus5','mks3_minus25'};
+        bg4_toggleable = {'4','mks4_plus25','mks4_plus5','mks4_plus1',...
+            'mks4_minus1','mks4_minus5','mks4_minus25'};
         mksselectbox = find_ui_handle('MKSselectbox',MKS_window_handle);
         mksopenclose = find_ui_handle('MKSopenclose',MKS_window_handle);
         % direct sending of commands to MKS was either deprecated or not fully
@@ -2982,12 +3049,21 @@ build_hygrometer_window(window_visibility_default(6));
             %open the serial object
             fopen(obj1);
             setappdata(main,'MKS946_comm',obj1)
+
             set(mksselectbox,'enable','off');
             set(mksopenclose,'string','Port Open');
             set(mkssendbutton,'enable','on');
-            
-            mks3sp.Enable = 'on';
-            mks4sp.Enable = 'on';
+            for tag_name = bg3_toggleable
+                bg3_handle = find_ui_handle({'bg3',tag_name{:}},...
+                    MKS_window_handle);
+                set(bg3_handle,'enable','on')
+            end
+            for tag_name = bg4_toggleable
+                bg4_handle = find_ui_handle({'bg4',tag_name{:}},...
+                    MKS_window_handle);
+                set(bg4_handle,'enable','on')
+            end
+
             update_MKS_values(source,eventdata,0)
             
         else
@@ -2998,11 +3074,20 @@ build_hygrometer_window(window_visibility_default(6));
                 fclose(temp.MKS946_comm);
                 rmappdata(main,'MKS946_comm');
             end
+
             set(mksselectbox,'enable','on');
             set(mksopenclose,'string','Port Closed');
             set(mkssendbutton,'enable','off');
-            mks3sp.Enable = 'off';
-            mks4sp.Enable = 'off';
+            for tag_name = bg3_toggleable
+                bg3_handle = find_ui_handle({'bg3',tag_name{:}},...
+                    MKS_window_handle);
+                set(bg3_handle,'enable','off')
+            end
+            for tag_name = bg4_toggleable
+                bg4_handle = find_ui_handle({'bg4',tag_name{:}},...
+                    MKS_window_handle);
+                set(bg4_handle,'enable','off')
+            end
         end
         
     end
@@ -3171,17 +3256,52 @@ build_hygrometer_window(window_visibility_default(6));
 
     function MKSchangeflow(source,eventdata,channel,value)
     % MKSCHANGEFLOW  Change flow setpoint on `channel` to `value`.
+    %
+    %   If `value` is nan, flow setpoint is the String property of the callback
+    %   `source`. Otherwise flow setpoint is `value`, which is assumed to be
+    %   a float.
+    %
+    %   Throws an exception if value is less than 0 or larger than a hard-coded
+    %   max flow rate for the given channel.
 
-        %figure out where the button push happened
+        % if passed value is nan, replace with String property of source
         if(isnan(value))
-            value = get(source,'string'); %get user-entered data
-            %set formatting to d.ddE+ee
-            formatted_value = sprintf('%.2E',str2num(value));
-        else
-            formatted_value = sprintf('%.2E',value);
+            value = str2num(get(source,'string'));
         end
-        qsp_command = ['QSP' num2str(channel) '!' formatted_value];
-        MKSsend(source,eventdata,qsp_command);
+        % right now, max flow rates are hard-coded
+        if(channel==3)
+            max_flow = 1000;
+        elseif(channel==4)
+            max_flow = 200;
+        else
+            error('MKSchangeflow: bad channel number input')
+        end
+        if(value>=0 && value<=max_flow)
+            % format value as d.ddE+ee for serial message to MFC controller
+            formatted_value = sprintf('%.2E',value);
+            qsp_command = ['QSP' num2str(channel) '!' formatted_value];
+            MKSsend(source,eventdata,qsp_command);
+        else
+            ME = MException('MKSchangeflow:flowOutOfRange', ...
+                'flow setpoint out of range');
+            throw(ME);
+        end
+    end
+
+    function mks_increment(source,eventdata,channel,incr)
+    % MKS_INCREMENT  Increment flow setpoint on `channel` by `incr`.
+
+        if(channel==3)
+            setpoint_handle = find_ui_handle({'bg3','3'},MKS_window_handle);
+        elseif(channel==4)
+            setpoint_handle = find_ui_handle({'bg4','4'},MKS_window_handle);
+        else
+            error('mks_increment: bad channel argument')
+        end
+        old_flow = str2double(setpoint_handle.String);
+        new_flow = old_flow + incr;
+        setpoint_handle.String = num2str(new_flow);
+        MKSchangeflow(source,eventdata,channel,new_flow);
     end
 
     function p_circ = water_vapor_pressure(T)
