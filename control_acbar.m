@@ -64,6 +64,12 @@ flush_button = uicontrol(main,'style','pushbutton',...
     'position',[175 20 110 20],'string','Flush All Data',...
     'callback',@flush_data,'tag','flush_button');
 
+rebuild_windows_button = uicontrol(main,'style','pushbutton',...
+    'string','Rebuild other windows',...
+    'position',[175 0 130 20],...
+    'tag','rebuild_windows_button',...
+    'callback',@rebuild_windows);
+
 % build checkboxes to toggle window visibility
 uicontrol(main,'style','text','string','Window visibility',...
     'position',[160 185 100 20]);
@@ -1635,6 +1641,56 @@ build_hygrometer_window(window_visibility_default(6));
         end
 
         start(fasttimer)
+    end
+
+    function rebuild_windows(source,eventdata)
+    % REBUILD_WINDOWS  Close and rebuild all program windows, except main.
+    %
+    %   Helpful for development.
+    %
+    %   Note this performs `delete(instrfind)`, which clobbers all connected
+    %   instruments, even outside of the context of control_acbar! This could
+    %   be more carefully executed to only delete the connections within
+    %   control_acbar... (Those connections are deleted so that they are
+    %   available to connect to in the rebuilt windows.)
+    %
+    %   Ditto for `imaqreset`.
+
+        all_windows = [microscope_window_handle, fringe_window_handle, ...
+            arduino_window_handle, MKS_window_handle, Andor_window_handle, ...
+            hygrometer_window_handle];
+        visibility_status = [0 0 0 0 0 0];
+
+        for i = 1:6
+            % generate tag for new checkbox
+            checkbox_tag = strcat(labels{i},'_checkbox');
+            % assume same tag prefix for window whose visibility is toggled
+            visibility_checkbox = find_ui_handle(checkbox_tag,main);
+            visibility_status(i) = visibility_checkbox.Value;
+        end
+
+        % need to stop timers so fasttimerfcn doesn't try to call nonexistent
+        % objects while windows are rebuilt
+        stop(errorcatchtimer)
+        stop(fasttimer)
+
+        close(all_windows)
+        % reset serial connections (note this clobbers all serial connections
+        % in the Matlab session, even those outside of control_acbar)
+        delete(instrfind)
+        % reset image acquisition
+        imaqreset
+
+        build_microscope_window(visibility_status(1));
+        build_fringe_window(visibility_status(2));
+        build_arduino_window(visibility_status(3));
+        build_MKS_window(visibility_status(4));
+        build_Andor_window(visibility_status(5));
+        build_hygrometer_window(visibility_status(6));
+
+        % TODO don't restart timers if they weren't running to begin with
+        start(fasttimer)
+        start(errorcatchtimer)
     end
 
 %% functions that actually do stuff for all subprograms
