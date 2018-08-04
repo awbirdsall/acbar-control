@@ -225,7 +225,7 @@ build_hygrometer_window(window_visibility_default(6));
         
         %create a tab group for voltage plot
         tgroup1 = uitabgroup('parent',microscope_window_handle,...
-            'position',[0.2 0.05 0.4 0.9],...
+            'position',[0.21 0.05 0.4 0.9],...
             'tag','tgroup1');
         tg1t1 = uitab('parent',tgroup1,'Title','Microsope',...
             'tag','tg1t1');
@@ -271,6 +271,12 @@ build_hygrometer_window(window_visibility_default(6));
             'position',[10 160 100 20],...
             'callback',@mholdposition,...
             'tag','mhold_position');
+
+        mhold_rescale_ac = uicontrol(microscope_window_handle,...
+            'style','checkbox',...
+            'string','rescale AC',...
+            'position',[110 160 73 20],...
+            'tag','mhold_rescale_ac');
         
         ax1clear = uicontrol(microscope_window_handle,'style','pushbutton','string','cla(ax1)',...
             'position',[10 130 100 20],...
@@ -285,12 +291,12 @@ build_hygrometer_window(window_visibility_default(6));
         
         SRS2label = uicontrol(microscope_window_handle,'style','text',...
             'String','AC Fcn Generator',...
-            'position',[525 220 100 20],...
+            'position',[570 220 90 15],...
             'tag','SRS2label');
         
         SRS2selectbox = uicontrol(microscope_window_handle,'style','popupmenu',...
             'String',serialinfo.AvailableSerialPorts,...
-            'position',[650 220 100 20],...
+            'position',[665 220 100 20],...
             'tag','SRS2selectbox');
         
         SRS2openclose = uicontrol(microscope_window_handle,'style','togglebutton',...
@@ -2099,14 +2105,14 @@ build_hygrometer_window(window_visibility_default(6));
     %
     %   Set DC voltage using PID algorithm with 3 hard-coded tuning
     %   parameters. Also proportionally update the AC frequency (in an
-    %   attempt to prevent hitting the spring point?).
+    %   attempt to prevent hitting the spring point?), if checked.
     %
     %   Parameter ycentroid is measured vertical pixel position.
     %
     %   Side effects include:
     %   - set PID_timestamp, PID_Iterm, and PID_oldvalue appdata in main
     %   - call set_dc()
-    %   - call set_ac_freq()
+    %   - call set_ac_freq() (if box checked)
     %   - update AC frequency display window text
 
         temp = getappdata(main);
@@ -2143,22 +2149,26 @@ build_hygrometer_window(window_visibility_default(6));
 
         % update DC setpoint
         set_dc(new_dc)
-        
-        % try to adapt AC frequency as DC changes
-        freqfactor = abs(sqrt(1/(new_dc/old_dc)));
-        % get current state of ac frequency
-        old_ac = getappdata(main,'freq_ac_trap');
-        new_ac = freqfactor*old_ac;
-        % keep above 100 Hz and below 500 Hz
-        new_ac = max([100 new_ac]);
-        new_ac = min([500 new_ac]);
-        % override new AC frequency if voltage is less than 5 V (it is too
-        % agressive in this region as it is based on relative change)
-        if(abs(new_dc<=5))
-           new_ac = old_ac;
+
+        % if box checked, rescale AC frequency as DC changes
+        mhold_rescale_ac = find_ui_handle('mhold_rescale_ac',microscope_window_handle);
+        rescale_ac = get(mhold_rescale_ac,'Value');
+        if(rescale_ac==1)
+            freqfactor = abs(sqrt(1/(new_dc/old_dc)));
+            % get current state of ac frequency
+            old_ac = getappdata(main,'freq_ac_trap');
+            new_ac = freqfactor*old_ac;
+            % keep above 100 Hz and below 500 Hz
+            new_ac = max([100 new_ac]);
+            new_ac = min([500 new_ac]);
+            % override new AC frequency if voltage is less than 5 V (it is too
+            % agressive in this region as it is based on relative change)
+            if(abs(new_dc<=5))
+               new_ac = old_ac;
+            end
+            % update AC frequency
+            set_ac_freq(new_ac);
         end
-        % update AC frequency
-        set_ac_freq(new_ac);
         
         % update globals used in next function call
         setappdata(main,'PID_timestamp',currenttime);
