@@ -2119,9 +2119,9 @@ build_hygrometer_window(window_visibility_default(6));
         % increases settling time, decreases steady-state error
         % (3) differential gain kd decreases overshoot, decreases settling
         % time (but can also amplify noise)
-        kp = 5e-3;
-        ki = 1e-7;
-        kd = 1e-3;
+        kp = 1e-1;
+        ki = 1e-6;
+        kd = 1e-2;
         % tracking error
         error = (ycentroid-temp.IdealY);
 
