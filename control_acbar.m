@@ -3290,7 +3290,7 @@ build_hygrometer_window(window_visibility_default(6));
 
     function mks_increment(source,eventdata,channel,incr)
     % MKS_INCREMENT  Increment flow setpoint on `channel` by `incr`.
-
+        stop(fasttimer)
         if(channel==3)
             setpoint_handle = find_ui_handle({'bg3','3'},MKS_window_handle);
         elseif(channel==4)
@@ -3302,6 +3302,7 @@ build_hygrometer_window(window_visibility_default(6));
         new_flow = old_flow + incr;
         setpoint_handle.String = num2str(new_flow);
         MKSchangeflow(source,eventdata,channel,new_flow);
+        start(fasttimer)
     end
 
     function p_circ = water_vapor_pressure(T)
