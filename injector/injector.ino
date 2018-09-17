@@ -46,7 +46,8 @@ int rawInjectButtonState = LOW;
 int debouncedInjectButtonState;
 int dacSetpoint;
 boolean dacRecvInProgress = false;
-int dacAddr = 0x62; // default address
+// hardcode address, could be 0x60 thru 0x67
+int dacAddr = 0x60;
 
 void setup() {
   Serial.begin(9600);
