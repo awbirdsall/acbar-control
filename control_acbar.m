@@ -15,6 +15,9 @@
 % >> imaqreset
 
 function control_acbar()
+%% define 'global' parameters (within controL_acbar() scope)
+FULLRANGE_DC = 830; % V
+
 %% create acbar_main window
 main = figure('visible','off',...
     'Name','acbar_main',...
@@ -2374,8 +2377,8 @@ build_hygrometer_window(window_visibility_default(6));
                 % throwing exception exits arduinocomms() function call
                 throw(ME);
             end
-            % scale setpoint to 300 V scale
-            prev_dc = prev_dc_frac*300/4095;
+            % convert 12-bit setpoint to voltage
+            prev_dc = prev_dc_frac*FULLRANGE_DC/4095;
             temp.voltage_dc_trap = prev_dc;
             setappdata(main,'voltage_dc_trap',temp.voltage_dc_trap);
             % Update displayed voltage setpoint
@@ -2512,15 +2515,14 @@ build_hygrometer_window(window_visibility_default(6));
 
         % send DC setpoint to Arduino with MCP4725 DAC installed
         % assumes 12-bit DAC with 0 to +5 V full range output, which is
-        % then amplified to 0 to +300 V scale
+        % then amplified to the full scale of the voltage supply
         % input:
         % dc_trap : float
-        % Desired voltage across DC endcaps in trap, 0 to +300 V range.
+        % Desired voltage across DC endcaps in trap
         temp = getappdata(main);
-        fullrange = 300; % volts
         % check voltage is in range
-        if dc_trap>=0 && dc_trap<=fullrange
-            allbits = round(dc_trap/fullrange * 4095);
+        if dc_trap>=0 && dc_trap<=FULLRANGE_DC
+            allbits = round(dc_trap/FULLRANGE_DC * 4095);
             % first byte is 0b1xxx#### where 1 is flag for Arduino that
             % this is the first byte of a DC voltage setpoint, xxx is
             % discarded and #### are the highest 4 bits of the 12-bit
