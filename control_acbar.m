@@ -1167,7 +1167,7 @@ build_hygrometer_window(window_visibility_default(6));
 
 %% functions that actually do stuff for main program
     function fasttimer_startstop(source,eventdata)
-        if(get(source,'value'))
+        if(strcmp(fasttimer.Running,'off'))
             start(fasttimer)
             set(source,'string','Stop background timer')
         else
@@ -1178,7 +1178,7 @@ build_hygrometer_window(window_visibility_default(6));
     end
 
     function errortimer_startstop(source,eventdata)
-        if(get(source,'value'))
+        if(strcmp(errorcatchtimer.Running,'off'))
             start(errorcatchtimer)
             set(source,'string','Stop error catch timer')
         else
