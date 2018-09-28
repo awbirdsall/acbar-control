@@ -1290,7 +1290,7 @@ build_hygrometer_window(window_visibility_default(6));
                     update_Julabo(savelogic);
                 end
                 if(isfield(temp,'arduino_comm')&&savelogic)
-                    update_arduino(source,eventdata);
+                    update_rh_t();
                 end
                 if(isfield(temp,'Hygrometer_comms')&&datalogic)
                     update_hygrometer_data()
@@ -2363,9 +2363,13 @@ build_hygrometer_window(window_visibility_default(6));
             set(inject_pushbutton,'enable','on');
             set(burst_pushbutton,'enable','on');
             setappdata(main,'arduino_comm',obj2);
+
+            % read UPSI RH/T data and update display
+            update_rh_t()
             
             % turn things on for DC control (Union used 2nd SRS DS345)
             % ask arduino what setpoint was
+            pause(1)
             flushinput(obj2) % clear any residual input from Arduino
             fprintf(obj2,'d');
             prev_dc_frac_str = fscanf(obj2,'%s\r\n');
@@ -2391,19 +2395,6 @@ build_hygrometer_window(window_visibility_default(6));
                 set(dc_button_handle,'enable','on')
             end
             
-            % read UPSI data and update display
-            temp = getappdata(main);
-            if(~isfield(temp,'UPSIdata'))
-                pause(1)
-                data2 = query(obj2, 'r');
-                spaces = strfind(data2,' ');
-                H1 = str2num(data2(1:spaces(1)-1));
-                T1 = str2num(data2(spaces(1)+1:spaces(2)-1));
-                H2 = str2num(data2(spaces(2)+1:spaces(3)-1));
-                T2 = str2num(data2(spaces(3)+1:spaces(4)-1));
-                temp.UPSIdata(1,:) = [now H1 T1 H2 T2];
-                setappdata(main,'UPSIdata',temp.UPSIdata)
-            end
         else % close connection
             temp = getappdata(main);
             if(isfield(temp,'arduino_comm'))
@@ -2428,8 +2419,10 @@ build_hygrometer_window(window_visibility_default(6));
         
     end
 
-    function update_arduino_display()
-    % UPDATE_ARDUINO_DISPLAY  Update humidity and temperature plots.
+    function update_rh_t_display()
+    % UPDATE_RH_T_DISPLAY  Update humidity and temperature plots.
+    %
+    %   Plots are raw analog voltage readings from Arduino, 0 to 1023 scale.
 
         temp = getappdata(main);
         rh_ax = find_ui_handle('ax21',arduino_window_handle);
@@ -2464,20 +2457,43 @@ build_hygrometer_window(window_visibility_default(6));
             '.');
     end
 
-    function update_arduino(source,eventdata)
+    function update_rh_t()
+    % UPDATE_RH_T  Query Arduino for RH and T values, record, and display.
+    %
+    %   Values are raw Arduino analog readings, 0 to 1023 scale.
+
         temp = getappdata(main);
         if(temp.arduino_comm.BytesAvailable~=0)
             flushinput(temp.arduino_comm);
         end
-        data2 = query(temp.arduino_comm, 'r');
-        spaces = strfind(data2,' ');
-        H1 = str2num(data2(1:spaces(1)-1));
-        T1 = str2num(data2(spaces(1)+1:spaces(2)-1));
-        H2 = str2num(data2(spaces(2)+1:spaces(3)-1));
-        T2 = str2num(data2(spaces(3)+1:spaces(4)-1));
-        temp.UPSIdata(end+1,:) = [now H1 T1 H2 T2];
-        setappdata(main,'UPSIdata',temp.UPSIdata);
-        update_arduino_display();
+        [data2,~,msg] = query(temp.arduino_comm, 'r');
+        if(~isempty(data2))
+            try
+                spaces = strfind(data2,' ');
+                H1 = str2num(data2(1:spaces(1)-1));
+                T1 = str2num(data2(spaces(1)+1:spaces(2)-1));
+                H2 = str2num(data2(spaces(2)+1:spaces(3)-1));
+                T2 = str2num(data2(spaces(3)+1:spaces(4)-1));
+                % either append to existing array or create new array
+                if(isfield(temp,'UPSIdata'))
+                    temp.UPSIdata(end+1,:) = [now H1 T1 H2 T2];
+                else
+                    temp.UPSIdata(1,:) = [now H1 T1 H2 T2];
+                end
+                setappdata(main,'UPSIdata',temp.UPSIdata);
+                update_rh_t_display();
+            catch ME
+                disp('problem with update_rh_t():')
+                disp('Arduino response:')
+                disp(data2)
+                disp('not recording this RH/T response')
+            end
+        else
+            % something went wrong. probably timed out. display warning message
+            % and don't try to append to UPSIdata to avoid size mismatch error.
+            disp('did not receive RH & T from Arduino. Warning message:')
+            disp(msg)
+        end
     end
 
     function inject(source,eventdata)
