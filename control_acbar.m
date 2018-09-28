@@ -2550,16 +2550,31 @@ build_hygrometer_window(window_visibility_default(6));
 
             % send bytes to arduino. It's important they're sent as single
             % bytes, without any newline character!
-            % also read expected responses from arduino. Don't do anything with
-            % the responses except remove from the input buffer.
+            % also read expected responses from arduino. If the responses
+            % don't exist, there must have been a timeout problem.
             fwrite(temp.arduino_comm,firstbyte);
             % expect to receive "First 4 dac bits"
-            fgets(temp.arduino_comm);
+            [tline1,~,msg1] = fgets(temp.arduino_comm);
+            if(isempty(tline1))
+                disp('After sending first 4 DAC bits, no Arduino response.')
+                disp('Resulted in following warning:')
+                warning(msg1)
+            end
 
             fwrite(temp.arduino_comm,secondbyte);
             % expect to receive "Last 8 dac bits" and "dacSetpoint: xxxx"
-            fgets(temp.arduino_comm);
-            fgets(temp.arduino_comm);
+            [tline2,~,msg2] = fgets(temp.arduino_comm);
+            if(isempty(tline2))
+                disp('After sending last 8 DAC bits, no 1st Arduino response.')
+                disp('Resulted in following warning:')
+                warning(msg2)
+            end
+            [tline3,~,msg3] = fgets(temp.arduino_comm);
+            if(isempty(tline3))
+                disp('After sending last 8 DAC bits, no 2nd Arduino response.')
+                disp('Resulted in following warning:')
+                warning(msg3)
+            end
         else
             ME = MException('set_dc:voltageOutOfRange', ...
                 'voltage setpoint out of range');
