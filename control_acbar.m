@@ -103,6 +103,10 @@ slowupdatetext = uicontrol(main,'style','text',...
     'tag','slowupdatetext');
 
 %% Initialize main window
+% flag to prevent interrupting serial communication with Arduino
+% during fastTimerFcn call (see https://www.mathworks.com/matlabcentral/answers/377690-how-to-prevent-timer-from-executing-code-between-two-lines)
+setappdata(main,'arduino_busy',0);
+
 fasttimer = timer('TimerFcn',@fasttimerFcn,'ExecutionMode','fixedRate',...
     'Period',0.10);
 
@@ -1290,7 +1294,12 @@ build_hygrometer_window(window_visibility_default(6));
                     update_Julabo(savelogic);
                 end
                 if(isfield(temp,'arduino_comm')&&savelogic)
-                    update_rh_t();
+                    arduino_busy = getappdata(main,'arduino_busy');
+                    if(arduino_busy==0)
+                        update_rh_t();
+                    else
+                        disp('Arduino busy, skipping RH/T update');
+                    end
                 end
                 if(isfield(temp,'Hygrometer_comms')&&datalogic)
                     update_hygrometer_data()
@@ -1645,7 +1654,8 @@ build_hygrometer_window(window_visibility_default(6));
                 'ShamrockXCal';'MKS946_comm';'LaudaRS232';...
                 'DS345_AC';'arduino_comm';'JulaboRS232';...
                 'Hygrometer_comms';'voltage_dc_trap';'amp_ac_trap';...
-                'freq_ac_trap';'PID_oldvalue';'PID_timestamp';'PID_Iterm'};
+                'freq_ac_trap';'PID_oldvalue';'PID_timestamp';'PID_Iterm';...
+                'arduino_busy'};
             for i = 1:length(listofnames)
                 if(~ismember(listofnames{i},namestokeep))
                     setappdata(main,listofnames{i},[])
@@ -2548,33 +2558,67 @@ build_hygrometer_window(window_visibility_default(6));
             firstbyte = setpointflag + bitshift(highbits,-8);
             secondbyte = bitand(allbits,bin2dec('000011111111'));
 
-            % send bytes to arduino. It's important they're sent as single
-            % bytes, without any newline character!
-            % also read expected responses from arduino. If the responses
-            % don't exist, there must have been a timeout problem.
-            fwrite(temp.arduino_comm,firstbyte);
-            % expect to receive "First 4 dac bits"
-            [tline1,~,msg1] = fgets(temp.arduino_comm);
-            if(isempty(tline1))
-                disp('After sending first 4 DAC bits, no Arduino response.')
-                disp('Resulted in following warning:')
-                warning(msg1)
+
+            % deactivate DC buttons until cleared, to prevent button mashing
+            % and queue of serial messages that can cause timeout error
+            dc_buttons = {'DC OFFS +10','DC OFFS +1','DC OFFS +0.1',...
+                'DC OFFS -10','DC OFFS -1','DC OFFS -0.1','DCOFFS_set0'};
+            for tag_name = dc_buttons
+                dc_button_handle = find_ui_handle(tag_name{:},...
+                    microscope_window_handle);
+                set(dc_button_handle,'enable','off')
             end
 
-            fwrite(temp.arduino_comm,secondbyte);
-            % expect to receive "Last 8 dac bits" and "dacSetpoint: xxxx"
-            [tline2,~,msg2] = fgets(temp.arduino_comm);
-            if(isempty(tline2))
-                disp('After sending last 8 DAC bits, no 1st Arduino response.')
-                disp('Resulted in following warning:')
-                warning(msg2)
+            % prevent timerFcn from interrupting multi-part Arduino message.
+            % Other arduino functions seem okay since they're only a single
+            % mssage, but if necessary could get clever and generalize this by
+            % referring to https://stackoverflow.com/a/16933077.
+            setappdata(main,'arduino_busy',1);
+
+            try
+                % send 2 bytes to arduino. It's important they're sent as single
+                % bytes, without any newline character!
+                % also read expected responses from arduino. If the responses
+                % don't exist, there must have been a timeout problem.
+                fwrite(temp.arduino_comm,firstbyte);
+                % expect to receive "First 4 dac bits"
+                [tline1,~,msg1] = fgets(temp.arduino_comm);
+                if(isempty(tline1))
+                    disp('No Arduino response after 1st set_dc() byte.')
+                    disp('Resulted in following warning:')
+                    warning(msg1)
+                end
+
+                fwrite(temp.arduino_comm,secondbyte);
+                % expect to receive "Last 8 dac bits. dacSetpoint: xxxx"
+                [tline2,~,msg2] = fgets(temp.arduino_comm);
+                if(isempty(tline2))
+                    disp('No Arduino response after 2nd set_dc() byte.')
+                    disp('Resulted in following warning:')
+                    warning(msg2)
+                end
+
+                % reenable dc_buttons for another press
+                for tag_name = dc_buttons
+                    dc_button_handle = find_ui_handle(tag_name{:},...
+                        microscope_window_handle);
+                    set(dc_button_handle,'enable','on')
+                end
+                % unset flag preventing timer from taking over arduino
+                % communication
+                setappdata(main,'arduino_busy',0);
+
+            % in case anything goes wrong, unlock buttons and arduino_busy
+            % before throwing exception
+            catch ME
+                for tag_name = dc_buttons
+                    dc_button_handle = find_ui_handle(tag_name{:},...
+                        microscope_window_handle);
+                    set(dc_button_handle,'enable','on')
+                end
+                setappdata(main,'arduino_busy',0);
             end
-            [tline3,~,msg3] = fgets(temp.arduino_comm);
-            if(isempty(tline3))
-                disp('After sending last 8 DAC bits, no 2nd Arduino response.')
-                disp('Resulted in following warning:')
-                warning(msg3)
-            end
+
         else
             ME = MException('set_dc:voltageOutOfRange', ...
                 'voltage setpoint out of range');

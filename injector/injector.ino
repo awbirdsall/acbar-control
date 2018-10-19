@@ -183,8 +183,7 @@ void readSerialInputByte() {
       // receive remaining 8 bits for dac and set
       dacSetpoint += input;
       // report what's going on
-      Serial.println("Last 8 dac bits");
-      String setpointPrefix = "dacSetpoint: ";
+      String setpointPrefix = "Last 8 dac bits. dacSetpoint: ";
       String setpointReport = setpointPrefix + dacSetpoint;
       Serial.println(setpointReport);
       // only try to set voltage if it's in range
